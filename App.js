@@ -12,8 +12,7 @@ import {
   ActivityIndicator,
   ScrollView,
   KeyboardAvoidingView,
-  Platform,
-  FlatList
+  Platform
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
@@ -21,22 +20,23 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 
 const API_KEY_STORAGE = '@openai_api_key';
 const SERVER_URL = 'http://localhost:5001';
 
 const Stack = createNativeStackNavigator();
 
-const CATEGORY_COLORS = {
-  'Breakfast': { bg: '#FFF3E0', text: '#E65100', icon: '🍳' },
-  'Lunch': { bg: '#E3F2FD', text: '#1565C0', icon: '🥪' },
-  'Dinner': { bg: '#FCE4EC', text: '#C2185B', icon: '🍽️' },
-  'Snack': { bg: '#F3E5F5', text: '#7B1FA2', icon: '🥨' },
-  'Dessert': { bg: '#FFF8E1', text: '#FF8F00', icon: '🍰' },
-  'Salad': { bg: '#E8F5E9', text: '#2E7D32', icon: '🥗' },
-  'Soup': { bg: '#FFEBEE', text: '#C62828', icon: '🍲' },
-  'Drink': { bg: '#E0F7FA', text: '#00838F', icon: '🥤' },
-  'All': { bg: '#ECEFF1', text: '#455A64', icon: '📋' },
+const CATEGORY_CONFIG = {
+  'Breakfast': { color: '#FF6B35', icon: 'sunny-outline', iconSet: 'Ionicons' },
+  'Lunch': { color: '#4ECDC4', icon: 'restaurant-outline', iconSet: 'Ionicons' },
+  'Dinner': { color: '#6C5CE7', icon: 'moon-outline', iconSet: 'Ionicons' },
+  'Snack': { color: '#FDCB6E', icon: 'cafe-outline', iconSet: 'Ionicons' },
+  'Dessert': { color: '#E84393', icon: 'ice-cream-outline', iconSet: 'Ionicons' },
+  'Salad': { color: '#00B894', icon: 'leaf-outline', iconSet: 'Ionicons' },
+  'Soup': { color: '#E17055', icon: 'water-outline', iconSet: 'Ionicons' },
+  'Drink': { color: '#0984E3', icon: 'wine-outline', iconSet: 'Ionicons' },
+  'All': { color: '#636E72', icon: 'grid-outline', iconSet: 'Ionicons' },
 };
 
 function HomeScreen({ navigation }) {
@@ -182,15 +182,23 @@ function HomeScreen({ navigation }) {
       <StatusBar style="dark" />
       
       <View style={styles.header}>
-        <Text style={styles.title}>🍽️ Food Scanner</Text>
+        <View style={styles.logoContainer}>
+          <View style={styles.logoIcon}>
+            <Ionicons name="scan" size={24} color="#fff" />
+          </View>
+          <Text style={styles.title}>FoodLens</Text>
+        </View>
         <TouchableOpacity onPress={openApiKeySettings} style={styles.settingsButton}>
-          <Text style={styles.settingsIcon}>⚙️</Text>
+          <Feather name="settings" size={22} color="#1a1a2e" />
         </TouchableOpacity>
       </View>
       
-      <Text style={styles.subtitle}>
-        {apiKey ? 'API key configured ✓' : 'Tap ⚙️ to add API key'}
-      </Text>
+      <View style={styles.statusRow}>
+        <View style={[styles.statusDot, apiKey ? styles.statusActive : styles.statusInactive]} />
+        <Text style={styles.statusText}>
+          {apiKey ? 'API Connected' : 'API Key Required'}
+        </Text>
+      </View>
 
       <ScrollView 
         style={styles.scrollView}
@@ -202,20 +210,24 @@ function HomeScreen({ navigation }) {
             <Image source={{ uri: image }} style={styles.image} />
           ) : (
             <View style={styles.placeholder}>
-              <Text style={styles.placeholderIcon}>📸</Text>
-              <Text style={styles.placeholderText}>Take a photo of your fridge</Text>
-              <Text style={styles.placeholderSubtext}>or upload an image</Text>
+              <View style={styles.placeholderIconContainer}>
+                <Ionicons name="image-outline" size={48} color="#94a3b8" />
+              </View>
+              <Text style={styles.placeholderText}>Scan your fridge or pantry</Text>
+              <Text style={styles.placeholderSubtext}>Get instant recipe suggestions</Text>
             </View>
           )}
         </View>
 
         <View style={styles.buttonContainer}>
           <TouchableOpacity style={styles.button} onPress={pickImage}>
-            <Text style={styles.buttonText}>📁 Upload</Text>
+            <Feather name="folder" size={20} color="#fff" />
+            <Text style={styles.buttonText}>Gallery</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.button} onPress={takePhoto}>
-            <Text style={styles.buttonText}>📷 Camera</Text>
+            <Feather name="camera" size={20} color="#fff" />
+            <Text style={styles.buttonText}>Camera</Text>
           </TouchableOpacity>
         </View>
 
@@ -227,18 +239,22 @@ function HomeScreen({ navigation }) {
           >
             {analyzing ? (
               <View style={styles.analyzingContainer}>
-                <ActivityIndicator color="#fff" />
-                <Text style={styles.analyzingText}>Scanning ingredients...</Text>
+                <ActivityIndicator color="#fff" size="small" />
+                <Text style={styles.analyzingText}>Analyzing ingredients...</Text>
               </View>
             ) : (
-              <Text style={styles.analyzeButtonText}>🔍 Find Recipes</Text>
+              <View style={styles.analyzeContent}>
+                <Ionicons name="sparkles" size={22} color="#fff" />
+                <Text style={styles.analyzeButtonText}>Discover Recipes</Text>
+              </View>
             )}
           </TouchableOpacity>
         )}
 
         {image && !analyzing && (
           <TouchableOpacity style={styles.clearButton} onPress={clearImage}>
-            <Text style={styles.clearButtonText}>Clear Image</Text>
+            <Feather name="x" size={18} color="#ef4444" />
+            <Text style={styles.clearButtonText}>Remove Image</Text>
           </TouchableOpacity>
         )}
       </ScrollView>
@@ -246,7 +262,7 @@ function HomeScreen({ navigation }) {
       <Modal
         visible={showApiKeyModal}
         transparent
-        animationType="slide"
+        animationType="fade"
         onRequestClose={() => setShowApiKeyModal(false)}
       >
         <KeyboardAvoidingView 
@@ -254,20 +270,29 @@ function HomeScreen({ navigation }) {
           style={styles.modalOverlay}
         >
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>OpenAI API Key</Text>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalIconContainer}>
+                <Feather name="key" size={24} color="#6366f1" />
+              </View>
+              <Text style={styles.modalTitle}>API Configuration</Text>
+            </View>
             <Text style={styles.modalSubtitle}>
-              Enter your OpenAI API key to analyze images. Your key is stored locally on your device.
+              Enter your OpenAI API key to enable image analysis. Your key is stored securely on your device.
             </Text>
             
-            <TextInput
-              style={styles.apiKeyInput}
-              placeholder="sk-..."
-              value={tempApiKey}
-              onChangeText={setTempApiKey}
-              autoCapitalize="none"
-              autoCorrect={false}
-              secureTextEntry
-            />
+            <View style={styles.inputContainer}>
+              <Feather name="lock" size={18} color="#94a3b8" style={styles.inputIcon} />
+              <TextInput
+                style={styles.apiKeyInput}
+                placeholder="sk-..."
+                placeholderTextColor="#94a3b8"
+                value={tempApiKey}
+                onChangeText={setTempApiKey}
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry
+              />
+            </View>
 
             <View style={styles.modalButtons}>
               <TouchableOpacity 
@@ -282,7 +307,8 @@ function HomeScreen({ navigation }) {
                 onPress={saveApiKey}
                 disabled={!tempApiKey}
               >
-                <Text style={styles.modalSaveText}>Save</Text>
+                <Feather name="check" size={18} color="#fff" />
+                <Text style={styles.modalSaveText}>Save Key</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -308,57 +334,52 @@ function ResultScreen({ route, navigation }) {
     ? recipes 
     : recipes.filter(r => r.category === selectedCategory);
 
-  const renderProduct = ({ item, index }) => (
-    <View style={styles.productItem}>
-      <View style={styles.productDot} />
-      <View style={styles.productInfo}>
-        <Text style={styles.productName}>{item.name}</Text>
-        {item.quantity && (
-          <Text style={styles.productQuantity}>{item.quantity}</Text>
-        )}
-      </View>
-    </View>
-  );
-
   const renderRecipeCard = (recipe, index) => {
     const isExpanded = expandedRecipe === index;
-    const categoryStyle = CATEGORY_COLORS[recipe.category] || CATEGORY_COLORS['All'];
+    const categoryConfig = CATEGORY_CONFIG[recipe.category] || CATEGORY_CONFIG['All'];
     
     return (
       <TouchableOpacity 
         key={index}
-        style={styles.recipeCard}
+        style={[styles.recipeCard, isExpanded && styles.recipeCardExpanded]}
         onPress={() => setExpandedRecipe(isExpanded ? null : index)}
-        activeOpacity={0.8}
+        activeOpacity={0.7}
       >
         <View style={styles.recipeHeader}>
-          <View style={[styles.categoryBadge, { backgroundColor: categoryStyle.bg }]}>
-            <Text style={styles.categoryIcon}>{categoryStyle.icon}</Text>
-            <Text style={[styles.categoryText, { color: categoryStyle.text }]}>
+          <View style={[styles.categoryBadge, { backgroundColor: `${categoryConfig.color}15` }]}>
+            <Ionicons name={categoryConfig.icon} size={14} color={categoryConfig.color} />
+            <Text style={[styles.categoryText, { color: categoryConfig.color }]}>
               {recipe.category}
             </Text>
           </View>
           <View style={styles.recipeMetaRow}>
             {recipe.difficulty && (
               <View style={styles.metaBadge}>
+                <Ionicons name="speedometer-outline" size={12} color="#64748b" />
                 <Text style={styles.metaText}>{recipe.difficulty}</Text>
               </View>
             )}
             {recipe.time && (
               <View style={styles.metaBadge}>
-                <Text style={styles.metaText}>⏱️ {recipe.time}</Text>
+                <Ionicons name="time-outline" size={12} color="#64748b" />
+                <Text style={styles.metaText}>{recipe.time}</Text>
               </View>
             )}
           </View>
         </View>
         
         <Text style={styles.recipeName}>{recipe.name}</Text>
-        <Text style={styles.recipeDescription}>{recipe.description}</Text>
+        <Text style={styles.recipeDescription} numberOfLines={isExpanded ? undefined : 2}>
+          {recipe.description}
+        </Text>
         
         {isExpanded && (
           <View style={styles.recipeDetails}>
             <View style={styles.ingredientsSection}>
-              <Text style={styles.sectionTitle}>📦 From your fridge:</Text>
+              <View style={styles.detailHeader}>
+                <Ionicons name="checkmark-circle" size={18} color="#10b981" />
+                <Text style={styles.detailTitle}>Available Ingredients</Text>
+              </View>
               <View style={styles.ingredientTags}>
                 {recipe.ingredients_from_image?.map((ing, i) => (
                   <View key={i} style={styles.ingredientTag}>
@@ -370,7 +391,10 @@ function ResultScreen({ route, navigation }) {
             
             {recipe.additional_ingredients?.length > 0 && (
               <View style={styles.ingredientsSection}>
-                <Text style={styles.sectionTitle}>🛒 You might need:</Text>
+                <View style={styles.detailHeader}>
+                  <Ionicons name="cart-outline" size={18} color="#f59e0b" />
+                  <Text style={styles.detailTitle}>Shopping List</Text>
+                </View>
                 <View style={styles.ingredientTags}>
                   {recipe.additional_ingredients.map((ing, i) => (
                     <View key={i} style={[styles.ingredientTag, styles.additionalTag]}>
@@ -382,7 +406,10 @@ function ResultScreen({ route, navigation }) {
             )}
             
             <View style={styles.stepsSection}>
-              <Text style={styles.sectionTitle}>👨‍🍳 Steps:</Text>
+              <View style={styles.detailHeader}>
+                <Ionicons name="list" size={18} color="#6366f1" />
+                <Text style={styles.detailTitle}>Instructions</Text>
+              </View>
               {recipe.steps?.map((step, i) => (
                 <View key={i} style={styles.stepRow}>
                   <View style={styles.stepNumber}>
@@ -395,9 +422,13 @@ function ResultScreen({ route, navigation }) {
           </View>
         )}
         
-        <Text style={styles.expandHint}>
-          {isExpanded ? 'Tap to collapse' : 'Tap for details'}
-        </Text>
+        <View style={styles.expandRow}>
+          <Ionicons 
+            name={isExpanded ? "chevron-up" : "chevron-down"} 
+            size={18} 
+            color="#94a3b8" 
+          />
+        </View>
       </TouchableOpacity>
     );
   };
@@ -411,9 +442,9 @@ function ResultScreen({ route, navigation }) {
           onPress={() => navigation.goBack()} 
           style={styles.backButton}
         >
-          <Text style={styles.backButtonText}>← Back</Text>
+          <Ionicons name="arrow-back" size={24} color="#1a1a2e" />
         </TouchableOpacity>
-        <Text style={styles.resultHeaderTitle}>Results</Text>
+        <Text style={styles.resultHeaderTitle}>Analysis Results</Text>
         <View style={styles.backButtonPlaceholder} />
       </View>
 
@@ -422,18 +453,24 @@ function ResultScreen({ route, navigation }) {
         contentContainerStyle={styles.resultScrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Image Preview */}
         <View style={styles.miniImageContainer}>
           <Image source={{ uri: imageUri }} style={styles.miniImage} />
+          <View style={styles.imageOverlay}>
+            <View style={styles.imageOverlayContent}>
+              <Ionicons name="checkmark-circle" size={20} color="#fff" />
+              <Text style={styles.imageOverlayText}>Scanned</Text>
+            </View>
+          </View>
         </View>
 
         {hasStructuredData ? (
           <>
-            {/* Products Section */}
             <View style={styles.sectionCard}>
               <View style={styles.sectionHeader}>
-                <Text style={styles.sectionEmoji}>🥬</Text>
-                <Text style={styles.sectionHeaderTitle}>Detected Products</Text>
+                <View style={styles.sectionIconContainer}>
+                  <MaterialCommunityIcons name="fridge-outline" size={20} color="#10b981" />
+                </View>
+                <Text style={styles.sectionHeaderTitle}>Detected Items</Text>
                 <View style={styles.countBadge}>
                   <Text style={styles.countText}>{products.length}</Text>
                 </View>
@@ -442,7 +479,9 @@ function ResultScreen({ route, navigation }) {
               <View style={styles.productsList}>
                 {products.map((item, index) => (
                   <View key={index} style={styles.productItem}>
-                    <View style={styles.productDot} />
+                    <View style={styles.productIcon}>
+                      <Ionicons name="nutrition-outline" size={16} color="#64748b" />
+                    </View>
                     <View style={styles.productInfo}>
                       <Text style={styles.productName}>{item.name}</Text>
                       {item.quantity && (
@@ -454,9 +493,8 @@ function ResultScreen({ route, navigation }) {
               </View>
             </View>
 
-            {/* Category Filter */}
             <View style={styles.filterSection}>
-              <Text style={styles.filterTitle}>Filter by category:</Text>
+              <Text style={styles.filterTitle}>Categories</Text>
               <ScrollView 
                 horizontal 
                 showsHorizontalScrollIndicator={false}
@@ -464,20 +502,24 @@ function ResultScreen({ route, navigation }) {
               >
                 {categories.map((cat) => {
                   const isSelected = selectedCategory === cat;
-                  const catStyle = CATEGORY_COLORS[cat] || CATEGORY_COLORS['All'];
+                  const catConfig = CATEGORY_CONFIG[cat] || CATEGORY_CONFIG['All'];
                   return (
                     <TouchableOpacity
                       key={cat}
                       style={[
                         styles.filterChip,
-                        isSelected && { backgroundColor: catStyle.bg, borderColor: catStyle.text }
+                        isSelected && { backgroundColor: catConfig.color, borderColor: catConfig.color }
                       ]}
                       onPress={() => setSelectedCategory(cat)}
                     >
-                      <Text style={styles.filterChipIcon}>{catStyle.icon}</Text>
+                      <Ionicons 
+                        name={catConfig.icon} 
+                        size={16} 
+                        color={isSelected ? '#fff' : catConfig.color} 
+                      />
                       <Text style={[
                         styles.filterChipText,
-                        isSelected && { color: catStyle.text, fontWeight: '600' }
+                        isSelected && { color: '#fff' }
                       ]}>
                         {cat}
                       </Text>
@@ -487,11 +529,12 @@ function ResultScreen({ route, navigation }) {
               </ScrollView>
             </View>
 
-            {/* Recipes Section */}
             <View style={styles.recipesSection}>
               <View style={styles.sectionHeader}>
-                <Text style={styles.sectionEmoji}>👨‍🍳</Text>
-                <Text style={styles.sectionHeaderTitle}>Recipe Ideas</Text>
+                <View style={[styles.sectionIconContainer, { backgroundColor: '#fef3c7' }]}>
+                  <Ionicons name="restaurant-outline" size={20} color="#f59e0b" />
+                </View>
+                <Text style={styles.sectionHeaderTitle}>Recipe Suggestions</Text>
                 <View style={styles.countBadge}>
                   <Text style={styles.countText}>{filteredRecipes.length}</Text>
                 </View>
@@ -502,8 +545,11 @@ function ResultScreen({ route, navigation }) {
           </>
         ) : (
           <View style={styles.rawResultBox}>
-            <Text style={styles.rawResultTitle}>Analysis Result:</Text>
-            <Text style={styles.rawResultText}>{raw || 'No results'}</Text>
+            <View style={styles.rawResultHeader}>
+              <Ionicons name="document-text-outline" size={20} color="#64748b" />
+              <Text style={styles.rawResultTitle}>Analysis Output</Text>
+            </View>
+            <Text style={styles.rawResultText}>{raw || 'No results available'}</Text>
           </View>
         )}
 
@@ -511,7 +557,8 @@ function ResultScreen({ route, navigation }) {
           style={styles.newPhotoButton}
           onPress={() => navigation.goBack()}
         >
-          <Text style={styles.newPhotoButtonText}>📷 Scan Another Photo</Text>
+          <Ionicons name="camera-outline" size={20} color="#fff" />
+          <Text style={styles.newPhotoButtonText}>New Scan</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
@@ -537,55 +584,84 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: '#f8fafc',
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     alignItems: 'center',
     paddingTop: 60,
-    paddingHorizontal: 20,
-    position: 'relative',
+    paddingHorizontal: 24,
+  },
+  logoContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  logoIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#6366f1',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#1a1a2e',
+    fontSize: 26,
+    fontWeight: '700',
+    color: '#0f172a',
+    letterSpacing: -0.5,
   },
   settingsButton: {
-    position: 'absolute',
-    right: 20,
-    top: 60,
-    padding: 8,
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#f1f5f9',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  settingsIcon: {
-    fontSize: 24,
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 16,
+    marginBottom: 24,
   },
-  subtitle: {
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  statusActive: {
+    backgroundColor: '#10b981',
+  },
+  statusInactive: {
+    backgroundColor: '#f59e0b',
+  },
+  statusText: {
     fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
-    marginTop: 8,
-    marginBottom: 20,
+    color: '#64748b',
+    fontWeight: '500',
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 24,
     paddingBottom: 40,
   },
   imageContainer: {
     width: '100%',
     aspectRatio: 4 / 3,
-    borderRadius: 20,
+    borderRadius: 24,
     overflow: 'hidden',
     backgroundColor: '#fff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 5,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 24,
+    elevation: 8,
     marginBottom: 24,
   },
   image: {
@@ -597,20 +673,25 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f0f4f8',
+    backgroundColor: '#f1f5f9',
   },
-  placeholderIcon: {
-    fontSize: 48,
-    marginBottom: 12,
+  placeholderIconContainer: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: '#e2e8f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
   },
   placeholderText: {
     fontSize: 18,
-    color: '#555',
-    fontWeight: '500',
+    color: '#334155',
+    fontWeight: '600',
   },
   placeholderSubtext: {
     fontSize: 14,
-    color: '#888',
+    color: '#94a3b8',
     marginTop: 4,
   },
   buttonContainer: {
@@ -620,31 +701,39 @@ const styles = StyleSheet.create({
   },
   button: {
     flex: 1,
-    backgroundColor: '#4361ee',
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    borderRadius: 14,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#1e293b',
+    paddingVertical: 16,
+    borderRadius: 16,
   },
   buttonText: {
     color: '#fff',
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '600',
   },
   analyzeButton: {
-    backgroundColor: '#2ec4b6',
-    paddingVertical: 18,
-    paddingHorizontal: 24,
-    borderRadius: 14,
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    justifyContent: 'center',
+    backgroundColor: '#6366f1',
+    paddingVertical: 18,
+    borderRadius: 16,
+    marginBottom: 12,
   },
   analyzeButtonDisabled: {
-    backgroundColor: '#9dd9d2',
+    backgroundColor: '#a5b4fc',
+  },
+  analyzeContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   analyzeButtonText: {
     color: '#fff',
-    fontSize: 19,
+    fontSize: 17,
     fontWeight: '700',
   },
   analyzingContainer: {
@@ -654,52 +743,78 @@ const styles = StyleSheet.create({
   },
   analyzingText: {
     color: '#fff',
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '600',
   },
   clearButton: {
-    paddingVertical: 12,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
   },
   clearButtonText: {
-    color: '#e63946',
-    fontSize: 16,
+    color: '#ef4444',
+    fontSize: 15,
     fontWeight: '500',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    padding: 24,
   },
   modalContent: {
     backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 24,
+    borderRadius: 24,
+    padding: 28,
     width: '100%',
     maxWidth: 400,
   },
+  modalHeader: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalIconContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    backgroundColor: '#eef2ff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
   modalTitle: {
     fontSize: 22,
-    fontWeight: 'bold',
-    color: '#1a1a2e',
-    marginBottom: 8,
+    fontWeight: '700',
+    color: '#0f172a',
   },
   modalSubtitle: {
     fontSize: 14,
-    color: '#666',
-    marginBottom: 20,
-    lineHeight: 20,
+    color: '#64748b',
+    marginBottom: 24,
+    lineHeight: 21,
+    textAlign: 'center',
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#e2e8f0',
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    backgroundColor: '#f8fafc',
+    marginBottom: 24,
+  },
+  inputIcon: {
+    marginRight: 12,
   },
   apiKeyInput: {
-    borderWidth: 1.5,
-    borderColor: '#e0e0e0',
-    borderRadius: 12,
-    padding: 16,
+    flex: 1,
+    paddingVertical: 16,
     fontSize: 16,
-    marginBottom: 20,
-    backgroundColor: '#fafafa',
+    color: '#0f172a',
   },
   modalButtons: {
     flexDirection: 'row',
@@ -710,22 +825,25 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
-    backgroundColor: '#f0f0f0',
+    backgroundColor: '#f1f5f9',
   },
   modalCancelText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#666',
+    color: '#64748b',
   },
   modalSaveButton: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
     paddingVertical: 14,
     borderRadius: 12,
-    alignItems: 'center',
-    backgroundColor: '#4361ee',
+    backgroundColor: '#6366f1',
   },
   modalSaveButtonDisabled: {
-    backgroundColor: '#a8b8f8',
+    backgroundColor: '#c7d2fe',
   },
   modalSaveText: {
     fontSize: 16,
@@ -737,77 +855,101 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingTop: 60,
-    paddingHorizontal: 20,
-    paddingBottom: 12,
+    paddingHorizontal: 24,
+    paddingBottom: 16,
   },
   backButton: {
-    padding: 8,
-  },
-  backButtonText: {
-    fontSize: 17,
-    color: '#4361ee',
-    fontWeight: '600',
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#f1f5f9',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   backButtonPlaceholder: {
-    width: 70,
+    width: 44,
   },
   resultHeaderTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#1a1a2e',
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0f172a',
   },
   resultScrollContent: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 24,
     paddingBottom: 40,
   },
   miniImageContainer: {
     width: '100%',
-    height: 140,
-    borderRadius: 16,
+    height: 160,
+    borderRadius: 20,
     overflow: 'hidden',
-    marginBottom: 20,
+    marginBottom: 24,
   },
   miniImage: {
     width: '100%',
     height: '100%',
     resizeMode: 'cover',
   },
+  imageOverlay: {
+    position: 'absolute',
+    bottom: 12,
+    left: 12,
+  },
+  imageOverlayContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  imageOverlayText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
   sectionCard: {
     backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 20,
+    shadowColor: '#0f172a',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
+    shadowOpacity: 0.04,
     shadowRadius: 8,
-    elevation: 3,
+    elevation: 2,
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 16,
   },
-  sectionEmoji: {
-    fontSize: 22,
-    marginRight: 8,
+  sectionIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#d1fae5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
   },
   sectionHeaderTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
-    color: '#1a1a2e',
+    color: '#0f172a',
     flex: 1,
   },
   countBadge: {
-    backgroundColor: '#e8f4f8',
-    paddingHorizontal: 10,
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 12,
     paddingVertical: 4,
-    borderRadius: 12,
+    borderRadius: 20,
   },
   countText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#2ec4b6',
+    color: '#64748b',
   },
   productsList: {
     gap: 8,
@@ -815,16 +957,18 @@ const styles = StyleSheet.create({
   productItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: '#f8f9fa',
-    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    backgroundColor: '#f8fafc',
+    borderRadius: 12,
   },
-  productDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#2ec4b6',
+  productIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
     marginRight: 12,
   },
   productInfo: {
@@ -835,74 +979,72 @@ const styles = StyleSheet.create({
   },
   productName: {
     fontSize: 15,
-    color: '#333',
+    color: '#1e293b',
     fontWeight: '500',
   },
   productQuantity: {
     fontSize: 13,
-    color: '#888',
+    color: '#94a3b8',
   },
   filterSection: {
-    marginBottom: 16,
+    marginBottom: 20,
   },
   filterTitle: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 10,
-    fontWeight: '500',
+    fontSize: 15,
+    color: '#64748b',
+    marginBottom: 12,
+    fontWeight: '600',
   },
   filterScroll: {
-    gap: 8,
+    gap: 10,
   },
   filterChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 24,
     backgroundColor: '#fff',
     borderWidth: 1.5,
-    borderColor: '#e0e0e0',
+    borderColor: '#e2e8f0',
     marginRight: 8,
-  },
-  filterChipIcon: {
-    fontSize: 14,
-    marginRight: 6,
   },
   filterChipText: {
     fontSize: 14,
-    color: '#666',
+    color: '#64748b',
+    fontWeight: '500',
   },
   recipesSection: {
     marginBottom: 20,
   },
   recipeCard: {
     backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 20,
+    padding: 20,
     marginTop: 12,
-    shadowColor: '#000',
+    shadowColor: '#0f172a',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
+    shadowOpacity: 0.04,
     shadowRadius: 8,
-    elevation: 3,
+    elevation: 2,
+  },
+  recipeCardExpanded: {
+    shadowOpacity: 0.08,
   },
   recipeHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 12,
   },
   categoryBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
-  },
-  categoryIcon: {
-    fontSize: 12,
-    marginRight: 4,
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
   },
   categoryText: {
     fontSize: 12,
@@ -913,46 +1055,53 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   metaBadge: {
-    backgroundColor: '#f0f0f0',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: 8,
   },
   metaText: {
-    fontSize: 11,
-    color: '#666',
+    fontSize: 12,
+    color: '#64748b',
+    fontWeight: '500',
   },
   recipeName: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#1a1a2e',
+    color: '#0f172a',
     marginBottom: 6,
   },
   recipeDescription: {
     fontSize: 14,
-    color: '#666',
-    lineHeight: 20,
+    color: '#64748b',
+    lineHeight: 21,
   },
-  expandHint: {
-    fontSize: 12,
-    color: '#aaa',
-    textAlign: 'center',
+  expandRow: {
+    alignItems: 'center',
     marginTop: 12,
   },
   recipeDetails: {
-    marginTop: 16,
-    paddingTop: 16,
+    marginTop: 20,
+    paddingTop: 20,
     borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
+    borderTopColor: '#f1f5f9',
   },
   ingredientsSection: {
-    marginBottom: 16,
+    marginBottom: 20,
   },
-  sectionTitle: {
-    fontSize: 14,
+  detailHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  detailTitle: {
+    fontSize: 15,
     fontWeight: '600',
-    color: '#333',
-    marginBottom: 10,
+    color: '#334155',
   },
   ingredientTags: {
     flexDirection: 'row',
@@ -960,78 +1109,86 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   ingredientTag: {
-    backgroundColor: '#e8f5e9',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
+    backgroundColor: '#d1fae5',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
   },
   ingredientTagText: {
     fontSize: 13,
-    color: '#2e7d32',
+    color: '#047857',
     fontWeight: '500',
   },
   additionalTag: {
-    backgroundColor: '#fff3e0',
+    backgroundColor: '#fef3c7',
   },
   additionalTagText: {
     fontSize: 13,
-    color: '#e65100',
+    color: '#b45309',
     fontWeight: '500',
   },
   stepsSection: {
-    marginTop: 8,
+    marginTop: 4,
   },
   stepRow: {
     flexDirection: 'row',
-    marginBottom: 12,
+    marginBottom: 14,
   },
   stepNumber: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#4361ee',
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: '#6366f1',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 14,
   },
   stepNumberText: {
     color: '#fff',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
   },
   stepText: {
     flex: 1,
     fontSize: 14,
-    color: '#444',
+    color: '#334155',
     lineHeight: 22,
   },
   rawResultBox: {
     backgroundColor: '#fff',
-    borderRadius: 16,
+    borderRadius: 20,
     padding: 20,
     marginBottom: 20,
+  },
+  rawResultHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 16,
   },
   rawResultTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333',
-    marginBottom: 12,
+    color: '#334155',
   },
   rawResultText: {
-    fontSize: 15,
-    color: '#555',
-    lineHeight: 24,
+    fontSize: 14,
+    color: '#64748b',
+    lineHeight: 22,
   },
   newPhotoButton: {
-    backgroundColor: '#4361ee',
-    paddingVertical: 16,
-    borderRadius: 14,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: '#1e293b',
+    paddingVertical: 16,
+    borderRadius: 16,
     marginTop: 8,
   },
   newPhotoButtonText: {
     color: '#fff',
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '600',
   },
 });
