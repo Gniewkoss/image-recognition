@@ -15,6 +15,8 @@ import {
   Platform
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -22,13 +24,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const API_KEY_STORAGE = '@openai_api_key';
 const SERVER_URL = 'http://localhost:5001';
 
-export default function App() {
+const Stack = createNativeStackNavigator();
+
+function HomeScreen({ navigation }) {
   const [image, setImage] = useState(null);
   const [apiKey, setApiKey] = useState('');
   const [tempApiKey, setTempApiKey] = useState('');
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
-  const [result, setResult] = useState('');
 
   useEffect(() => {
     loadApiKey();
@@ -76,7 +79,6 @@ export default function App() {
 
     if (!result.canceled) {
       setImage(result.assets[0].uri);
-      setResult('');
     }
   };
 
@@ -99,7 +101,6 @@ export default function App() {
 
     if (!result.canceled) {
       setImage(result.assets[0].uri);
-      setResult('');
     }
   };
 
@@ -116,7 +117,6 @@ export default function App() {
     }
 
     setAnalyzing(true);
-    setResult('');
 
     try {
       const base64 = await FileSystem.readAsStringAsync(image, {
@@ -139,7 +139,10 @@ export default function App() {
       if (data.error) {
         Alert.alert('Error', data.error);
       } else {
-        setResult(data.result);
+        navigation.navigate('Result', { 
+          result: data.result,
+          imageUri: image 
+        });
       }
     } catch (e) {
       Alert.alert(
@@ -153,7 +156,6 @@ export default function App() {
 
   const clearImage = () => {
     setImage(null);
-    setResult('');
   };
 
   const openApiKeySettings = () => {
@@ -208,19 +210,15 @@ export default function App() {
             disabled={analyzing}
           >
             {analyzing ? (
-              <ActivityIndicator color="#fff" />
+              <View style={styles.analyzingContainer}>
+                <ActivityIndicator color="#fff" />
+                <Text style={styles.analyzingText}>Analyzing...</Text>
+              </View>
             ) : (
               <Text style={styles.analyzeButtonText}>🔍 What's in this photo?</Text>
             )}
           </TouchableOpacity>
         )}
-
-        {result ? (
-          <View style={styles.resultContainer}>
-            <Text style={styles.resultTitle}>Analysis Result:</Text>
-            <Text style={styles.resultText}>{result}</Text>
-          </View>
-        ) : null}
 
         {image && !analyzing && (
           <TouchableOpacity style={styles.clearButton} onPress={clearImage}>
@@ -275,6 +273,65 @@ export default function App() {
         </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
+  );
+}
+
+function ResultScreen({ route, navigation }) {
+  const { result, imageUri } = route.params;
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <StatusBar style="dark" />
+      
+      <View style={styles.resultHeader}>
+        <TouchableOpacity 
+          onPress={() => navigation.goBack()} 
+          style={styles.backButton}
+        >
+          <Text style={styles.backButtonText}>← Back</Text>
+        </TouchableOpacity>
+        <Text style={styles.resultHeaderTitle}>Analysis Result</Text>
+        <View style={styles.backButtonPlaceholder} />
+      </View>
+
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.resultScrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.resultImageContainer}>
+          <Image source={{ uri: imageUri }} style={styles.resultImage} />
+        </View>
+
+        <View style={styles.resultBox}>
+          <Text style={styles.resultLabel}>What's in this photo:</Text>
+          <Text style={styles.resultText}>{result}</Text>
+        </View>
+
+        <TouchableOpacity 
+          style={styles.newPhotoButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={styles.newPhotoButtonText}>Analyze Another Photo</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+export default function App() {
+  return (
+    <NavigationContainer>
+      <Stack.Navigator 
+        screenOptions={{ 
+          headerShown: false,
+          animation: 'slide_from_right'
+        }}
+      >
+        <Stack.Screen name="Home" component={HomeScreen} />
+        <Stack.Screen name="Result" component={ResultScreen} />
+      </Stack.Navigator>
+    </NavigationContainer>
   );
 }
 
@@ -381,27 +438,15 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
   },
-  resultContainer: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+  analyzingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
-  resultTitle: {
-    fontSize: 16,
+  analyzingText: {
+    color: '#fff',
+    fontSize: 18,
     fontWeight: '600',
-    color: '#333',
-    marginBottom: 8,
-  },
-  resultText: {
-    fontSize: 15,
-    color: '#555',
-    lineHeight: 22,
   },
   clearButton: {
     paddingVertical: 12,
@@ -476,5 +521,85 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#fff',
+  },
+  resultHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 60,
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+  },
+  backButton: {
+    padding: 8,
+  },
+  backButtonText: {
+    fontSize: 18,
+    color: '#007AFF',
+    fontWeight: '600',
+  },
+  backButtonPlaceholder: {
+    width: 70,
+  },
+  resultHeaderTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  resultScrollContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 40,
+  },
+  resultImageContainer: {
+    width: '100%',
+    aspectRatio: 4 / 3,
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  resultImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  resultBox: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  resultLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  resultText: {
+    fontSize: 17,
+    color: '#333',
+    lineHeight: 26,
+  },
+  newPhotoButton: {
+    backgroundColor: '#007AFF',
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  newPhotoButtonText: {
+    color: '#fff',
+    fontSize: 17,
+    fontWeight: '600',
   },
 });
