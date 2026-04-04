@@ -28,7 +28,57 @@ def analyze_image():
             input=[{
                 "role": "user",
                 "content": [
-                    {"type": "input_text", "text": "What's in this image? Describe it in detail."},
+                    {"type": "input_text", "text":
+                    """write this You are an AI assistant that analyzes an image of a fridge or food items.
+
+Your task has two steps:
+
+1. Identify all visible food products in the image.
+- List every recognizable item.
+- Be specific (e.g., “cheddar cheese” instead of just “cheese” if possible).
+- Include quantities or states if visible (e.g., “half tomato”, “opened milk carton”).
+- Ignore non-food items unless they are clearly food-related.
+
+2. Based on the identified ingredients, generate recipes:
+- Suggest multiple recipes that can be made using ONLY or MOSTLY the detected ingredients.
+- Recipes should be realistic and commonly known dishes.
+- For each recipe, include:
+  - Recipe name
+  - Short description
+  - Ingredients used from the image
+  - Any additional basic ingredients (e.g., salt, oil, spices) if needed
+  - Brief preparation steps
+
+Output format:
+
+=== DETECTED INGREDIENTS ===
+- Item 1
+- Item 2
+- Item 3
+...
+
+=== POSSIBLE RECIPES ===
+
+1. Recipe Name
+Description: ...
+Uses: ...
+Additional ingredients: ...
+Steps:
+1. ...
+2. ...
+3. ...
+
+2. Recipe Name
+...
+
+Important rules:
+- Do NOT hallucinate ingredients that are not visible.
+- If uncertain, mark items as “possibly”.
+- Prefer simple, quick recipes.
+- If very few ingredients are detected, suggest minimal recipes or combinations.
+
+
+"""},
                     {
                         "type": "input_image",
                         "image_url": f"data:image/jpeg;base64,{image_base64}",
