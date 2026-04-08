@@ -646,11 +646,13 @@ function ResultScreen({ route, navigation }) {
                       style={styles.productInfo}
                       onPress={() => startEditProduct(index)}
                     >
-                      <Text style={styles.productName}>{item.name}</Text>
+                      <Text style={styles.productName} numberOfLines={1}>{item.name}</Text>
                       {item.quantity && (
-                        <Text style={styles.productQuantity}>
-                          {item.quantity}
-                        </Text>
+                        <View style={styles.quantityBadge}>
+                          <Text style={styles.productQuantity}>
+                            {item.quantity}
+                          </Text>
+                        </View>
                       )}
                     </TouchableOpacity>
                     <View style={styles.productActions}>
@@ -1344,17 +1346,25 @@ const styles = StyleSheet.create({
   productInfo: {
     flex: 1,
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
   },
   productName: {
     fontSize: 15,
     color: "#1e293b",
     fontWeight: "500",
+    flex: 1,
+  },
+  quantityBadge: {
+    backgroundColor: "#e0f2fe",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginLeft: 8,
   },
   productQuantity: {
-    fontSize: 13,
-    color: "#94a3b8",
+    fontSize: 12,
+    color: "#0284c7",
+    fontWeight: "600",
   },
   productActions: {
     flexDirection: "row",
