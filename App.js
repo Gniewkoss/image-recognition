@@ -359,11 +359,54 @@ function ResultScreen({ route, navigation }) {
   const { result, raw, imageUri } = route.params;
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [expandedRecipe, setExpandedRecipe] = useState(null);
-
+  
   const hasStructuredData = result && result.products && result.recipes;
-
-  const products = hasStructuredData ? result.products : [];
+  
+  const [products, setProducts] = useState(hasStructuredData ? result.products : []);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingProduct, setEditingProduct] = useState(null);
+  const [newProductName, setNewProductName] = useState("");
+  const [newProductQuantity, setNewProductQuantity] = useState("");
+  
   const recipes = hasStructuredData ? result.recipes : [];
+  
+  const addProduct = () => {
+    if (!newProductName.trim()) return;
+    setProducts([...products, { 
+      name: newProductName.trim(), 
+      quantity: newProductQuantity.trim() || null 
+    }]);
+    setNewProductName("");
+    setNewProductQuantity("");
+    setShowAddModal(false);
+  };
+  
+  const deleteProduct = (index) => {
+    setProducts(products.filter((_, i) => i !== index));
+  };
+  
+  const startEditProduct = (index) => {
+    setEditingProduct(index);
+    setNewProductName(products[index].name);
+    setNewProductQuantity(products[index].quantity || "");
+    setShowEditModal(true);
+  };
+  
+  const saveEditProduct = () => {
+    if (editingProduct === null || !newProductName.trim()) return;
+    const updated = [...products];
+    updated[editingProduct] = {
+      ...updated[editingProduct],
+      name: newProductName.trim(),
+      quantity: newProductQuantity.trim() || null
+    };
+    setProducts(updated);
+    setEditingProduct(null);
+    setNewProductName("");
+    setNewProductQuantity("");
+    setShowEditModal(false);
+  };
 
   const categories = ["All", ...new Set(recipes.map((r) => r.category))];
 
@@ -538,6 +581,12 @@ function ResultScreen({ route, navigation }) {
                 <View style={styles.countBadge}>
                   <Text style={styles.countText}>{products.length}</Text>
                 </View>
+                <TouchableOpacity 
+                  style={styles.addProductButton}
+                  onPress={() => setShowAddModal(true)}
+                >
+                  <Ionicons name="add" size={20} color="#fff" />
+                </TouchableOpacity>
               </View>
 
               <View style={styles.productsList}>
@@ -550,13 +599,30 @@ function ResultScreen({ route, navigation }) {
                         color="#64748b"
                       />
                     </View>
-                    <View style={styles.productInfo}>
+                    <TouchableOpacity 
+                      style={styles.productInfo}
+                      onPress={() => startEditProduct(index)}
+                    >
                       <Text style={styles.productName}>{item.name}</Text>
                       {item.quantity && (
                         <Text style={styles.productQuantity}>
                           {item.quantity}
                         </Text>
                       )}
+                    </TouchableOpacity>
+                    <View style={styles.productActions}>
+                      <TouchableOpacity 
+                        style={styles.productEditButton}
+                        onPress={() => startEditProduct(index)}
+                      >
+                        <Feather name="edit-2" size={14} color="#6366f1" />
+                      </TouchableOpacity>
+                      <TouchableOpacity 
+                        style={styles.productDeleteButton}
+                        onPress={() => deleteProduct(index)}
+                      >
+                        <Feather name="trash-2" size={14} color="#ef4444" />
+                      </TouchableOpacity>
                     </View>
                   </View>
                 ))}
@@ -656,6 +722,141 @@ function ResultScreen({ route, navigation }) {
           <Text style={styles.newPhotoButtonText}>New Scan</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      {/* Add Product Modal */}
+      <Modal
+        visible={showAddModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowAddModal(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.modalOverlay}
+        >
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <View style={[styles.modalIconContainer, { backgroundColor: "#d1fae5" }]}>
+                <Ionicons name="add-circle-outline" size={24} color="#10b981" />
+              </View>
+              <Text style={styles.modalTitle}>Add Product</Text>
+            </View>
+            
+            <View style={styles.inputContainer}>
+              <Feather name="tag" size={18} color="#94a3b8" style={styles.inputIcon} />
+              <TextInput
+                style={styles.apiKeyInput}
+                placeholder="Product name"
+                placeholderTextColor="#94a3b8"
+                value={newProductName}
+                onChangeText={setNewProductName}
+                autoCapitalize="words"
+              />
+            </View>
+            
+            <View style={styles.inputContainer}>
+              <Feather name="hash" size={18} color="#94a3b8" style={styles.inputIcon} />
+              <TextInput
+                style={styles.apiKeyInput}
+                placeholder="Quantity (optional)"
+                placeholderTextColor="#94a3b8"
+                value={newProductQuantity}
+                onChangeText={setNewProductQuantity}
+              />
+            </View>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.modalCancelButton}
+                onPress={() => {
+                  setShowAddModal(false);
+                  setNewProductName("");
+                  setNewProductQuantity("");
+                }}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalSaveButton, !newProductName.trim() && styles.modalSaveButtonDisabled]}
+                onPress={addProduct}
+                disabled={!newProductName.trim()}
+              >
+                <Ionicons name="add" size={18} color="#fff" />
+                <Text style={styles.modalSaveText}>Add</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Edit Product Modal */}
+      <Modal
+        visible={showEditModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowEditModal(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.modalOverlay}
+        >
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <View style={[styles.modalIconContainer, { backgroundColor: "#e0e7ff" }]}>
+                <Feather name="edit-2" size={24} color="#6366f1" />
+              </View>
+              <Text style={styles.modalTitle}>Edit Product</Text>
+            </View>
+            
+            <View style={styles.inputContainer}>
+              <Feather name="tag" size={18} color="#94a3b8" style={styles.inputIcon} />
+              <TextInput
+                style={styles.apiKeyInput}
+                placeholder="Product name"
+                placeholderTextColor="#94a3b8"
+                value={newProductName}
+                onChangeText={setNewProductName}
+                autoCapitalize="words"
+              />
+            </View>
+            
+            <View style={styles.inputContainer}>
+              <Feather name="hash" size={18} color="#94a3b8" style={styles.inputIcon} />
+              <TextInput
+                style={styles.apiKeyInput}
+                placeholder="Quantity (optional)"
+                placeholderTextColor="#94a3b8"
+                value={newProductQuantity}
+                onChangeText={setNewProductQuantity}
+              />
+            </View>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.modalCancelButton}
+                onPress={() => {
+                  setShowEditModal(false);
+                  setEditingProduct(null);
+                  setNewProductName("");
+                  setNewProductQuantity("");
+                }}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalSaveButton, !newProductName.trim() && styles.modalSaveButtonDisabled]}
+                onPress={saveEditProduct}
+                disabled={!newProductName.trim()}
+              >
+                <Feather name="check" size={18} color="#fff" />
+                <Text style={styles.modalSaveText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1080,6 +1281,36 @@ const styles = StyleSheet.create({
   productQuantity: {
     fontSize: 13,
     color: "#94a3b8",
+  },
+  productActions: {
+    flexDirection: "row",
+    gap: 8,
+    marginLeft: 8,
+  },
+  productEditButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: "#eef2ff",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  productDeleteButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: "#fef2f2",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  addProductButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: "#10b981",
+    justifyContent: "center",
+    alignItems: "center",
+    marginLeft: 8,
   },
   filterSection: {
     marginBottom: 20,
