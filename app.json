@@ -1,36 +1,35 @@
 {
   "expo": {
-    "name": "Image Recognition",
+    "name": "FoodLens",
     "slug": "image-recognition-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#6366f1"
     },
     "ios": {
       "supportsTablet": true,
+      "bundleIdentifier": "com.foodlens.app",
       "infoPlist": {
-        "NSCameraUsageDescription": "This app needs camera access to take photos.",
-        "NSPhotoLibraryUsageDescription": "This app needs photo library access to upload images."
+        "NSCameraUsageDescription": "This app needs camera access to take photos of your food.",
+        "NSPhotoLibraryUsageDescription": "This app needs photo library access to upload food images."
       }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#6366f1"
       },
       "permissions": [
         "android.permission.CAMERA",
-        "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.READ_MEDIA_IMAGES"
       ],
-      "package": "com.foodscanner"
+      "package": "com.foodlens.app"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -39,8 +38,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow $(PRODUCT_NAME) to access your photos.",
-          "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera."
+          "photosPermission": "Allow FoodLens to access your photos.",
+          "cameraPermission": "Allow FoodLens to access your camera."
         }
       ],
       "expo-asset",

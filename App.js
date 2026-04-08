@@ -23,7 +23,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons, MaterialCommunityIcons, Feather } from "@expo/vector-icons";
 
 const API_KEY_STORAGE = "@openai_api_key";
-const SERVER_URL = "http://localhost:5001";
+const SERVER_URL = "https://undecompounded-multicrystalline-natasha.ngrok-free.dev";
 
 const Stack = createNativeStackNavigator();
 
@@ -41,6 +41,7 @@ const CATEGORY_CONFIG = {
 
 function HomeScreen({ navigation }) {
   const [image, setImage] = useState(null);
+  const [imageBase64, setImageBase64] = useState(null);
   const [apiKey, setApiKey] = useState("");
   const [tempApiKey, setTempApiKey] = useState("");
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
@@ -89,10 +90,12 @@ function HomeScreen({ navigation }) {
       allowsEditing: true,
       aspect: [4, 3],
       quality: 0.8,
+      base64: true,
     });
 
     if (!result.canceled) {
       setImage(result.assets[0].uri);
+      setImageBase64(result.assets[0].base64);
     }
   };
 
@@ -111,10 +114,12 @@ function HomeScreen({ navigation }) {
       allowsEditing: true,
       aspect: [4, 3],
       quality: 0.8,
+      base64: true,
     });
 
     if (!result.canceled) {
       setImage(result.assets[0].uri);
+      setImageBase64(result.assets[0].base64);
     }
   };
 
@@ -133,18 +138,21 @@ function HomeScreen({ navigation }) {
     setAnalyzing(true);
 
     try {
-      const base64 = await FileSystem.readAsStringAsync(image, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
+      if (!imageBase64) {
+        Alert.alert("Error", "Image data not available. Please retake the photo.");
+        setAnalyzing(false);
+        return;
+      }
 
       const response = await fetch(`${SERVER_URL}/analyze`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "ngrok-skip-browser-warning": "true",
         },
         body: JSON.stringify({
           api_key: apiKey,
-          image_base64: base64,
+          image_base64: imageBase64,
         }),
       });
 
@@ -160,9 +168,10 @@ function HomeScreen({ navigation }) {
         });
       }
     } catch (e) {
+      console.error("Connection error:", e);
       Alert.alert(
         "Connection Error",
-        "Could not connect to the server. Make sure the Python backend is running.",
+        `Error: ${e.message || "Unknown error"}. Make sure the Python backend is running.`,
       );
     } finally {
       setAnalyzing(false);
@@ -171,6 +180,7 @@ function HomeScreen({ navigation }) {
 
   const clearImage = () => {
     setImage(null);
+    setImageBase64(null);
   };
 
   const openApiKeySettings = () => {

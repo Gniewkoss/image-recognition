@@ -1,0 +1,21 @@
+# Backend files
+backend/
+venv/
+
+# Native directories (let EAS generate fresh)
+android/
+ios/
+
+# IDE and OS files
+.idea/
+.vscode/
+*.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+
+# Test files
+__tests__/
+*.test.js
+*.spec.js
