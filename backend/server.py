@@ -72,15 +72,30 @@ def analyze_image():
         
         result_text = response.output_text
         
+        # Get token usage
+        usage = getattr(response, 'usage', None)
+        token_info = {}
+        if usage:
+            token_info = {
+                'input_tokens': usage.input_tokens,
+                'output_tokens': usage.output_tokens,
+                'total_tokens': usage.input_tokens + usage.output_tokens
+            }
+            print(f"\n=== TOKEN USAGE ===")
+            print(f"Input tokens:  {usage.input_tokens}")
+            print(f"Output tokens: {usage.output_tokens}")
+            print(f"Total tokens:  {usage.input_tokens + usage.output_tokens}")
+            print(f"==================\n")
+        
         json_match = re.search(r'\{[\s\S]*\}', result_text)
         if json_match:
             result_text = json_match.group()
         
         try:
             parsed_result = json.loads(result_text)
-            return jsonify({'result': parsed_result, 'raw': response.output_text})
+            return jsonify({'result': parsed_result, 'raw': response.output_text, 'tokens': token_info})
         except json.JSONDecodeError:
-            return jsonify({'result': None, 'raw': response.output_text, 'parse_error': True})
+            return jsonify({'result': None, 'raw': response.output_text, 'parse_error': True, 'tokens': token_info})
     
     except Exception as e:
         return jsonify({'error': str(e)}), 500
