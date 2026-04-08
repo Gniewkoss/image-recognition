@@ -100,6 +100,92 @@ def analyze_image():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+RECIPES_PROMPT = """Based on the following list of available ingredients, suggest recipes.
+
+Available ingredients:
+{ingredients}
+
+Return your response as valid JSON only, no other text.
+
+Return this exact JSON structure:
+{{
+  "recipes": [
+    {{
+      "name": "Recipe Name",
+      "category": "Category",
+      "description": "Brief description",
+      "difficulty": "Easy/Medium/Hard",
+      "time": "Cooking time",
+      "ingredients_from_image": ["ingredient1", "ingredient2"],
+      "additional_ingredients": ["salt", "oil"],
+      "steps": ["Step 1", "Step 2", "Step 3"]
+    }}
+  ]
+}}
+
+Categories must be one of: "Breakfast", "Lunch", "Dinner", "Snack", "Dessert", "Salad", "Soup", "Drink"
+
+Rules:
+- Suggest 4-6 realistic recipes using mostly the available ingredients
+- Keep recipes simple and practical
+- Return ONLY valid JSON, no markdown or explanation"""
+
+@app.route('/regenerate-recipes', methods=['POST'])
+def regenerate_recipes():
+    data = request.json
+    
+    api_key = data.get('api_key')
+    products = data.get('products', [])
+    
+    if not api_key:
+        return jsonify({'error': 'API key is required'}), 400
+    
+    if not products:
+        return jsonify({'error': 'Products list is required'}), 400
+    
+    try:
+        client = OpenAI(api_key=api_key)
+        
+        ingredients_list = "\n".join([f"- {p.get('name', '')} ({p.get('quantity', 'some')})" for p in products])
+        prompt = RECIPES_PROMPT.format(ingredients=ingredients_list)
+        
+        response = client.responses.create(
+            model="gpt-4.1-mini",
+            input=[{
+                "role": "user",
+                "content": prompt
+            }],
+        )
+        
+        result_text = response.output_text
+        
+        usage = getattr(response, 'usage', None)
+        token_info = {}
+        if usage:
+            token_info = {
+                'input_tokens': usage.input_tokens,
+                'output_tokens': usage.output_tokens,
+                'total_tokens': usage.input_tokens + usage.output_tokens
+            }
+            print(f"\n=== REGENERATE RECIPES - TOKEN USAGE ===")
+            print(f"Input tokens:  {usage.input_tokens}")
+            print(f"Output tokens: {usage.output_tokens}")
+            print(f"Total tokens:  {usage.input_tokens + usage.output_tokens}")
+            print(f"========================================\n")
+        
+        json_match = re.search(r'\{[\s\S]*\}', result_text)
+        if json_match:
+            result_text = json_match.group()
+        
+        try:
+            parsed_result = json.loads(result_text)
+            return jsonify({'recipes': parsed_result.get('recipes', []), 'tokens': token_info})
+        except json.JSONDecodeError:
+            return jsonify({'error': 'Failed to parse recipes', 'raw': response.output_text})
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({'status': 'ok'})

@@ -165,6 +165,7 @@ function HomeScreen({ navigation }) {
           result: data.result,
           raw: data.raw,
           imageUri: image,
+          apiKey: apiKey,
         });
       }
     } catch (e) {
@@ -356,20 +357,21 @@ function HomeScreen({ navigation }) {
 }
 
 function ResultScreen({ route, navigation }) {
-  const { result, raw, imageUri } = route.params;
+  const { result, raw, imageUri, apiKey } = route.params;
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [expandedRecipe, setExpandedRecipe] = useState(null);
   
   const hasStructuredData = result && result.products && result.recipes;
   
   const [products, setProducts] = useState(hasStructuredData ? result.products : []);
+  const [recipes, setRecipes] = useState(hasStructuredData ? result.recipes : []);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [newProductName, setNewProductName] = useState("");
   const [newProductQuantity, setNewProductQuantity] = useState("");
-  
-  const recipes = hasStructuredData ? result.recipes : [];
+  const [refreshingRecipes, setRefreshingRecipes] = useState(false);
+  const [productsChanged, setProductsChanged] = useState(false);
   
   const addProduct = () => {
     if (!newProductName.trim()) return;
@@ -380,10 +382,12 @@ function ResultScreen({ route, navigation }) {
     setNewProductName("");
     setNewProductQuantity("");
     setShowAddModal(false);
+    setProductsChanged(true);
   };
   
   const deleteProduct = (index) => {
     setProducts(products.filter((_, i) => i !== index));
+    setProductsChanged(true);
   };
   
   const startEditProduct = (index) => {
@@ -406,6 +410,45 @@ function ResultScreen({ route, navigation }) {
     setNewProductName("");
     setNewProductQuantity("");
     setShowEditModal(false);
+    setProductsChanged(true);
+  };
+  
+  const refreshRecipes = async () => {
+    if (products.length === 0) {
+      Alert.alert("No Products", "Add some products first to generate recipes.");
+      return;
+    }
+    
+    setRefreshingRecipes(true);
+    
+    try {
+      const response = await fetch(`${SERVER_URL}/regenerate-recipes`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "ngrok-skip-browser-warning": "true",
+        },
+        body: JSON.stringify({
+          api_key: apiKey,
+          products: products,
+        }),
+      });
+      
+      const data = await response.json();
+      
+      if (data.error) {
+        Alert.alert("Error", data.error);
+      } else {
+        setRecipes(data.recipes || []);
+        setProductsChanged(false);
+        setSelectedCategory("All");
+      }
+    } catch (e) {
+      console.error("Refresh error:", e);
+      Alert.alert("Error", `Failed to refresh recipes: ${e.message}`);
+    } finally {
+      setRefreshingRecipes(false);
+    }
   };
 
   const categories = ["All", ...new Set(recipes.map((r) => r.category))];
@@ -671,6 +714,26 @@ function ResultScreen({ route, navigation }) {
               </ScrollView>
             </View>
 
+            {productsChanged && (
+              <TouchableOpacity
+                style={[styles.refreshRecipesButton, refreshingRecipes && styles.refreshRecipesButtonDisabled]}
+                onPress={refreshRecipes}
+                disabled={refreshingRecipes}
+              >
+                {refreshingRecipes ? (
+                  <View style={styles.refreshingContainer}>
+                    <ActivityIndicator color="#fff" size="small" />
+                    <Text style={styles.refreshRecipesText}>Updating recipes...</Text>
+                  </View>
+                ) : (
+                  <View style={styles.refreshingContainer}>
+                    <Ionicons name="refresh" size={18} color="#fff" />
+                    <Text style={styles.refreshRecipesText}>Update Recipes</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            )}
+
             <View style={styles.recipesSection}>
               <View style={styles.sectionHeader}>
                 <View
@@ -691,6 +754,17 @@ function ResultScreen({ route, navigation }) {
                 <View style={styles.countBadge}>
                   <Text style={styles.countText}>{filteredRecipes.length}</Text>
                 </View>
+                <TouchableOpacity
+                  style={[styles.refreshIconButton, refreshingRecipes && { opacity: 0.5 }]}
+                  onPress={refreshRecipes}
+                  disabled={refreshingRecipes}
+                >
+                  <Ionicons 
+                    name="refresh" 
+                    size={18} 
+                    color="#f59e0b" 
+                  />
+                </TouchableOpacity>
               </View>
 
               {filteredRecipes.map((recipe, index) =>
@@ -1308,6 +1382,36 @@ const styles = StyleSheet.create({
     height: 32,
     borderRadius: 8,
     backgroundColor: "#10b981",
+    justifyContent: "center",
+    alignItems: "center",
+    marginLeft: 8,
+  },
+  refreshRecipesButton: {
+    backgroundColor: "#f59e0b",
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    marginBottom: 16,
+    alignItems: "center",
+  },
+  refreshRecipesButtonDisabled: {
+    backgroundColor: "#fcd34d",
+  },
+  refreshRecipesText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  refreshingContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  refreshIconButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: "#fef3c7",
     justifyContent: "center",
     alignItems: "center",
     marginLeft: 8,
