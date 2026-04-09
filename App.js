@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   StyleSheet,
   Text,
@@ -14,54 +14,243 @@ import {
   KeyboardAvoidingView,
   Platform,
   Share,
+  Animated,
+  Dimensions,
+  FlatList,
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import * as ImagePicker from "expo-image-picker";
-import * as FileSystem from "expo-file-system";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons, MaterialCommunityIcons, Feather } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 const API_KEY_STORAGE = "@openai_api_key";
 const FAVORITES_STORAGE = "@favorite_recipes";
 const HISTORY_STORAGE = "@scan_history";
+const INGREDIENTS_STORAGE = "@current_ingredients";
+const RECIPES_STORAGE = "@current_recipes";
+const SHOPPING_LIST_STORAGE = "@shopping_list";
 const SERVER_URL = "https://undecompounded-multicrystalline-natasha.ngrok-free.dev";
 
 const Stack = createNativeStackNavigator();
+const Tab = createBottomTabNavigator();
 
-const CATEGORY_CONFIG = {
-  Breakfast: { color: "#FF6B35", icon: "sunny-outline", iconSet: "Ionicons" },
-  Lunch: { color: "#4ECDC4", icon: "restaurant-outline", iconSet: "Ionicons" },
-  Dinner: { color: "#6C5CE7", icon: "moon-outline", iconSet: "Ionicons" },
-  Snack: { color: "#FDCB6E", icon: "cafe-outline", iconSet: "Ionicons" },
-  Dessert: { color: "#E84393", icon: "ice-cream-outline", iconSet: "Ionicons" },
-  Salad: { color: "#00B894", icon: "leaf-outline", iconSet: "Ionicons" },
-  Soup: { color: "#E17055", icon: "water-outline", iconSet: "Ionicons" },
-  Drink: { color: "#0984E3", icon: "wine-outline", iconSet: "Ionicons" },
-  All: { color: "#636E72", icon: "grid-outline", iconSet: "Ionicons" },
+const COLORS = {
+  primary: "#4CAF50",
+  primaryLight: "#81C784",
+  primaryDark: "#388E3C",
+  secondary: "#FFF8E7",
+  background: "#FAFAF5",
+  card: "#FFFFFF",
+  accent: "#FF9800",
+  accentLight: "#FFB74D",
+  text: "#2D3436",
+  textSecondary: "#636E72",
+  textLight: "#B2BEC3",
+  border: "#E8E8E0",
+  success: "#4CAF50",
+  warning: "#FF9800",
+  error: "#EF5350",
+  gradient: ["#4CAF50", "#81C784"],
 };
 
-function HomeScreen({ navigation }) {
-  const [image, setImage] = useState(null);
-  const [imageBase64, setImageBase64] = useState(null);
-  const [apiKey, setApiKey] = useState("");
-  const [tempApiKey, setTempApiKey] = useState("");
-  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
-  const [analyzing, setAnalyzing] = useState(false);
+const CATEGORY_CONFIG = {
+  Breakfast: { color: "#FF9800", icon: "sunny-outline", emoji: "🌅" },
+  Lunch: { color: "#4CAF50", icon: "restaurant-outline", emoji: "🥗" },
+  Dinner: { color: "#7E57C2", icon: "moon-outline", emoji: "🍽️" },
+  Snack: { color: "#FFB74D", icon: "cafe-outline", emoji: "🍿" },
+  Dessert: { color: "#E91E63", icon: "ice-cream-outline", emoji: "🍰" },
+  Salad: { color: "#66BB6A", icon: "leaf-outline", emoji: "🥬" },
+  Soup: { color: "#FF7043", icon: "water-outline", emoji: "🍲" },
+  Drink: { color: "#42A5F5", icon: "wine-outline", emoji: "🥤" },
+  All: { color: "#78909C", icon: "grid-outline", emoji: "📋" },
+};
+
+const SkeletonLoader = ({ width, height, style }) => {
+  const animatedValue = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    loadApiKey();
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(animatedValue, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(animatedValue, {
+          toValue: 0,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    animation.start();
+    return () => animation.stop();
   }, []);
 
-  const loadApiKey = async () => {
+  const opacity = animatedValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.3, 0.7],
+  });
+
+  return (
+    <Animated.View
+      style={[
+        {
+          width,
+          height,
+          backgroundColor: "#E0E0E0",
+          borderRadius: 12,
+          opacity,
+        },
+        style,
+      ]}
+    />
+  );
+};
+
+const EmptyState = ({ icon, title, subtitle, actionText, onAction }) => (
+  <View style={styles.emptyState}>
+    <View style={styles.emptyStateIcon}>
+      <Ionicons name={icon} size={48} color={COLORS.textLight} />
+    </View>
+    <Text style={styles.emptyStateTitle}>{title}</Text>
+    <Text style={styles.emptyStateSubtitle}>{subtitle}</Text>
+    {actionText && onAction && (
+      <TouchableOpacity style={styles.emptyStateButton} onPress={onAction}>
+        <Text style={styles.emptyStateButtonText}>{actionText}</Text>
+      </TouchableOpacity>
+    )}
+  </View>
+);
+
+const RecipeCard = ({ recipe, onPress, onFavorite, isFavorited, compact }) => {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const categoryConfig = CATEGORY_CONFIG[recipe.category] || CATEGORY_CONFIG.All;
+
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 0.97,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  return (
+    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+      <TouchableOpacity
+        style={[styles.recipeCard, compact && styles.recipeCardCompact]}
+        onPress={onPress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        activeOpacity={1}
+      >
+        <View style={[styles.recipeImageContainer, compact && styles.recipeImageContainerCompact]}>
+          <View style={[styles.recipeImagePlaceholder, { backgroundColor: `${categoryConfig.color}20` }]}>
+            <Text style={styles.recipeEmoji}>{categoryConfig.emoji}</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.favoriteButton}
+            onPress={(e) => {
+              e.stopPropagation();
+              onFavorite(recipe);
+            }}
+          >
+            <Ionicons
+              name={isFavorited ? "heart" : "heart-outline"}
+              size={20}
+              color={isFavorited ? COLORS.error : "#fff"}
+            />
+          </TouchableOpacity>
+          <View style={[styles.categoryPill, { backgroundColor: categoryConfig.color }]}>
+            <Text style={styles.categoryPillText}>{recipe.category}</Text>
+          </View>
+        </View>
+        <View style={styles.recipeCardContent}>
+          <Text style={styles.recipeCardTitle} numberOfLines={2}>{recipe.name}</Text>
+          <View style={styles.recipeCardMeta}>
+            {recipe.time && (
+              <View style={styles.metaItem}>
+                <Ionicons name="time-outline" size={14} color={COLORS.textSecondary} />
+                <Text style={styles.metaText}>{recipe.time}</Text>
+              </View>
+            )}
+            {recipe.difficulty && (
+              <View style={styles.metaItem}>
+                <Ionicons name="speedometer-outline" size={14} color={COLORS.textSecondary} />
+                <Text style={styles.metaText}>{recipe.difficulty}</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+};
+
+const IngredientChip = ({ ingredient, onRemove, editable }) => (
+  <View style={styles.ingredientChip}>
+    <View style={styles.ingredientChipIcon}>
+      <Ionicons name="nutrition-outline" size={16} color={COLORS.primary} />
+    </View>
+    <View style={styles.ingredientChipContent}>
+      <Text style={styles.ingredientChipName} numberOfLines={1}>{ingredient.name}</Text>
+      {ingredient.quantity && (
+        <Text style={styles.ingredientChipQuantity}>{ingredient.quantity}</Text>
+      )}
+    </View>
+    {editable && onRemove && (
+      <TouchableOpacity style={styles.ingredientChipRemove} onPress={onRemove}>
+        <Ionicons name="close" size={16} color={COLORS.textSecondary} />
+      </TouchableOpacity>
+    )}
+  </View>
+);
+
+function HomeTab({ navigation }) {
+  const [ingredients, setIngredients] = useState([]);
+  const [recipes, setRecipes] = useState([]);
+  const [favorites, setFavorites] = useState([]);
+  const [scanning, setScanning] = useState(false);
+  const [apiKey, setApiKey] = useState("");
+  const [showApiModal, setShowApiModal] = useState(false);
+  const [tempApiKey, setTempApiKey] = useState("");
+  const scanAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener("focus", loadData);
+    return unsubscribe;
+  }, [navigation]);
+
+  const loadData = async () => {
     try {
-      const savedKey = await AsyncStorage.getItem(API_KEY_STORAGE);
-      if (savedKey) {
-        setApiKey(savedKey);
-      }
+      const [savedKey, savedIngredients, savedRecipes, savedFavorites] = await Promise.all([
+        AsyncStorage.getItem(API_KEY_STORAGE),
+        AsyncStorage.getItem(INGREDIENTS_STORAGE),
+        AsyncStorage.getItem(RECIPES_STORAGE),
+        AsyncStorage.getItem(FAVORITES_STORAGE),
+      ]);
+      if (savedKey) setApiKey(savedKey);
+      if (savedIngredients) setIngredients(JSON.parse(savedIngredients));
+      if (savedRecipes) setRecipes(JSON.parse(savedRecipes));
+      if (savedFavorites) setFavorites(JSON.parse(savedFavorites));
     } catch (e) {
-      console.error("Failed to load API key:", e);
+      console.error("Failed to load data:", e);
     }
   };
 
@@ -69,300 +258,277 @@ function HomeScreen({ navigation }) {
     try {
       await AsyncStorage.setItem(API_KEY_STORAGE, tempApiKey);
       setApiKey(tempApiKey);
-      setShowApiKeyModal(false);
-      Alert.alert("Success", "API key saved successfully");
+      setShowApiModal(false);
+      Alert.alert("Success", "API key saved!");
     } catch (e) {
       Alert.alert("Error", "Failed to save API key");
     }
   };
 
-  const pickImage = async () => {
-    const permissionResult =
-      await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-    if (!permissionResult.granted) {
-      Alert.alert(
-        "Permission Required",
-        "Please allow access to your photo library to upload images.",
-      );
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.8,
-      base64: true,
-    });
-
-    if (!result.canceled) {
-      setImage(result.assets[0].uri);
-      setImageBase64(result.assets[0].base64);
-    }
-  };
-
-  const takePhoto = async () => {
-    const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
-
-    if (!permissionResult.granted) {
-      Alert.alert(
-        "Permission Required",
-        "Please allow camera access to take photos.",
-      );
-      return;
-    }
-
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.8,
-      base64: true,
-    });
-
-    if (!result.canceled) {
-      setImage(result.assets[0].uri);
-      setImageBase64(result.assets[0].base64);
-    }
-  };
-
-  const analyzeImage = async () => {
+  const startScan = async (useCamera) => {
     if (!apiKey) {
-      setTempApiKey("");
-      setShowApiKeyModal(true);
+      setShowApiModal(true);
       return;
     }
 
-    if (!image) {
-      Alert.alert("No Image", "Please select or take a photo first.");
+    const permission = useCamera
+      ? await ImagePicker.requestCameraPermissionsAsync()
+      : await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permission.granted) {
+      Alert.alert("Permission Required", "Please allow access to continue.");
       return;
     }
 
-    setAnalyzing(true);
+    const result = useCamera
+      ? await ImagePicker.launchCameraAsync({
+          mediaTypes: ["images"],
+          allowsEditing: true,
+          aspect: [4, 3],
+          quality: 0.8,
+          base64: true,
+        })
+      : await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ["images"],
+          allowsEditing: true,
+          aspect: [4, 3],
+          quality: 0.8,
+          base64: true,
+        });
+
+    if (!result.canceled && result.assets[0].base64) {
+      analyzeImage(result.assets[0].base64, result.assets[0].uri);
+    }
+  };
+
+  const analyzeImage = async (base64, imageUri) => {
+    setScanning(true);
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(scanAnim, { toValue: 1, duration: 1500, useNativeDriver: true }),
+        Animated.timing(scanAnim, { toValue: 0, duration: 1500, useNativeDriver: true }),
+      ])
+    ).start();
 
     try {
-      if (!imageBase64) {
-        Alert.alert("Error", "Image data not available. Please retake the photo.");
-        setAnalyzing(false);
-        return;
-      }
-
       const response = await fetch(`${SERVER_URL}/analyze`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "ngrok-skip-browser-warning": "true",
         },
-        body: JSON.stringify({
-          api_key: apiKey,
-          image_base64: imageBase64,
-        }),
+        body: JSON.stringify({ image: base64, api_key: apiKey }),
       });
 
-      const data = await response.json();
+      if (!response.ok) throw new Error("Analysis failed");
 
-      if (data.error) {
-        Alert.alert("Error", data.error);
-      } else {
-        navigation.navigate("Result", {
-          result: data.result,
-          raw: data.raw,
-          imageUri: image,
-          apiKey: apiKey,
-        });
-      }
+      const data = await response.json();
+      const newIngredients = data.products || [];
+      const newRecipes = data.recipes || [];
+
+      setIngredients(newIngredients);
+      setRecipes(newRecipes);
+
+      await Promise.all([
+        AsyncStorage.setItem(INGREDIENTS_STORAGE, JSON.stringify(newIngredients)),
+        AsyncStorage.setItem(RECIPES_STORAGE, JSON.stringify(newRecipes)),
+      ]);
+
+      const historyEntry = {
+        id: Date.now().toString(),
+        date: new Date().toISOString(),
+        imageUri,
+        products: newIngredients,
+        recipes: newRecipes,
+      };
+      const savedHistory = await AsyncStorage.getItem(HISTORY_STORAGE);
+      const history = savedHistory ? JSON.parse(savedHistory) : [];
+      await AsyncStorage.setItem(HISTORY_STORAGE, JSON.stringify([historyEntry, ...history].slice(0, 30)));
+
     } catch (e) {
-      console.error("Connection error:", e);
-      Alert.alert(
-        "Connection Error",
-        `Error: ${e.message || "Unknown error"}. Make sure the Python backend is running.`,
-      );
+      console.error("Analysis error:", e);
+      Alert.alert("Error", "Failed to analyze image. Please try again.");
     } finally {
-      setAnalyzing(false);
+      setScanning(false);
+      scanAnim.stopAnimation();
     }
   };
 
-  const clearImage = () => {
-    setImage(null);
-    setImageBase64(null);
+  const toggleFavorite = async (recipe) => {
+    const isFav = favorites.some((f) => f.name === recipe.name);
+    const updated = isFav
+      ? favorites.filter((f) => f.name !== recipe.name)
+      : [{ ...recipe, savedAt: new Date().toISOString() }, ...favorites];
+    setFavorites(updated);
+    await AsyncStorage.setItem(FAVORITES_STORAGE, JSON.stringify(updated));
   };
 
-  const openApiKeySettings = () => {
-    setTempApiKey(apiKey);
-    setShowApiKeyModal(true);
+  const isFavorited = (recipe) => favorites.some((f) => f.name === recipe.name);
+
+  const recipesByCategory = recipes.reduce((acc, recipe) => {
+    const cat = recipe.category || "All";
+    if (!acc[cat]) acc[cat] = [];
+    acc[cat].push(recipe);
+    return acc;
+  }, {});
+
+  const greeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return "Good morning";
+    if (hour < 18) return "Good afternoon";
+    return "Good evening";
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
-
-      <View style={styles.header}>
-        <View style={styles.logoContainer}>
-          <View style={styles.logoIcon}>
-            <Ionicons name="scan" size={24} color="#fff" />
-          </View>
-          <Text style={styles.title}>FoodLens</Text>
+      
+      <View style={styles.homeHeader}>
+        <View>
+          <Text style={styles.greeting}>{greeting()}! 👋</Text>
+          <Text style={styles.headerQuestion}>What's in your fridge today?</Text>
         </View>
-        <View style={styles.headerButtons}>
-          <TouchableOpacity
-            onPress={() => navigation.navigate("History")}
-            style={styles.headerButton}
-          >
-            <Ionicons name="time-outline" size={22} color="#1a1a2e" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => navigation.navigate("Favorites")}
-            style={styles.headerButton}
-          >
-            <Ionicons name="heart-outline" size={22} color="#ef4444" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={openApiKeySettings}
-            style={styles.headerButton}
-          >
-            <Feather name="settings" size={22} color="#1a1a2e" />
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity style={styles.settingsBtn} onPress={() => setShowApiModal(true)}>
+          <Ionicons name="settings-outline" size={24} color={COLORS.text} />
+        </TouchableOpacity>
       </View>
 
-      <View style={styles.statusRow}>
-        <View
-          style={[
-            styles.statusDot,
-            apiKey ? styles.statusActive : styles.statusInactive,
-          ]}
-        />
-        <Text style={styles.statusText}>
-          {apiKey ? "API Connected" : "API Key Required"}
-        </Text>
-      </View>
-
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.imageContainer}>
-          {image ? (
-            <Image source={{ uri: image }} style={styles.image} />
-          ) : (
-            <View style={styles.placeholder}>
-              <View style={styles.placeholderIconContainer}>
-                <Ionicons name="image-outline" size={48} color="#94a3b8" />
-              </View>
-              <Text style={styles.placeholderText}>
-                Scan your fridge or pantry
-              </Text>
-              <Text style={styles.placeholderSubtext}>
-                Get instant recipe suggestions
-              </Text>
-            </View>
-          )}
-        </View>
-
-        <View style={styles.buttonContainer}>
-          <TouchableOpacity style={styles.button} onPress={pickImage}>
-            <Feather name="folder" size={20} color="#fff" />
-            <Text style={styles.buttonText}>Gallery</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.button} onPress={takePhoto}>
-            <Feather name="camera" size={20} color="#fff" />
-            <Text style={styles.buttonText}>Camera</Text>
-          </TouchableOpacity>
-        </View>
-
-        {image && (
-          <TouchableOpacity
-            style={[
-              styles.analyzeButton,
-              analyzing && styles.analyzeButtonDisabled,
-            ]}
-            onPress={analyzeImage}
-            disabled={analyzing}
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        <TouchableOpacity
+          style={styles.scanButton}
+          onPress={() => {
+            Alert.alert("Scan Fridge", "Choose an option", [
+              { text: "Take Photo", onPress: () => startScan(true) },
+              { text: "Choose from Library", onPress: () => startScan(false) },
+              { text: "Cancel", style: "cancel" },
+            ]);
+          }}
+          disabled={scanning}
+        >
+          <LinearGradient
+            colors={scanning ? ["#9E9E9E", "#BDBDBD"] : COLORS.gradient}
+            style={styles.scanButtonGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
           >
-            {analyzing ? (
-              <View style={styles.analyzingContainer}>
+            {scanning ? (
+              <View style={styles.scanningContent}>
                 <ActivityIndicator color="#fff" size="small" />
-                <Text style={styles.analyzingText}>
-                  Analyzing ingredients...
-                </Text>
+                <Text style={styles.scanButtonText}>Scanning your fridge...</Text>
               </View>
             ) : (
-              <View style={styles.analyzeContent}>
-                <Ionicons name="sparkles" size={22} color="#fff" />
-                <Text style={styles.analyzeButtonText}>Discover Recipes</Text>
-              </View>
+              <>
+                <View style={styles.scanIconContainer}>
+                  <Ionicons name="scan-outline" size={32} color="#fff" />
+                </View>
+                <Text style={styles.scanButtonText}>Scan Your Fridge</Text>
+                <Text style={styles.scanButtonSubtext}>Take a photo to detect ingredients</Text>
+              </>
             )}
-          </TouchableOpacity>
+          </LinearGradient>
+        </TouchableOpacity>
+
+        {ingredients.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Detected Ingredients</Text>
+              <TouchableOpacity onPress={() => navigation.navigate("IngredientsTab")}>
+                <Text style={styles.seeAllText}>See all</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.ingredientsScroll}>
+              {ingredients.slice(0, 8).map((ing, i) => (
+                <IngredientChip key={i} ingredient={ing} />
+              ))}
+              {ingredients.length > 8 && (
+                <View style={styles.moreChip}>
+                  <Text style={styles.moreChipText}>+{ingredients.length - 8}</Text>
+                </View>
+              )}
+            </ScrollView>
+          </View>
         )}
 
-        {image && !analyzing && (
-          <TouchableOpacity style={styles.clearButton} onPress={clearImage}>
-            <Feather name="x" size={18} color="#ef4444" />
-            <Text style={styles.clearButtonText}>Remove Image</Text>
-          </TouchableOpacity>
+        {scanning && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Generating recipes...</Text>
+            <View style={styles.skeletonRow}>
+              <SkeletonLoader width={160} height={200} style={{ marginRight: 12 }} />
+              <SkeletonLoader width={160} height={200} style={{ marginRight: 12 }} />
+              <SkeletonLoader width={160} height={200} />
+            </View>
+          </View>
         )}
+
+        {!scanning && recipes.length === 0 && ingredients.length === 0 && (
+          <EmptyState
+            icon="restaurant-outline"
+            title="No ingredients yet"
+            subtitle="Scan your fridge to discover what you can cook!"
+            actionText="Scan Now"
+            onAction={() => startScan(true)}
+          />
+        )}
+
+        {!scanning && Object.keys(recipesByCategory).map((category) => (
+          <View key={category} style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionTitleRow}>
+                <Text style={styles.categoryEmoji}>
+                  {CATEGORY_CONFIG[category]?.emoji || "📋"}
+                </Text>
+                <Text style={styles.sectionTitle}>{category}</Text>
+              </View>
+              <View style={styles.countBadge}>
+                <Text style={styles.countText}>{recipesByCategory[category].length}</Text>
+              </View>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {recipesByCategory[category].map((recipe, i) => (
+                <RecipeCard
+                  key={i}
+                  recipe={recipe}
+                  onPress={() => navigation.navigate("RecipeDetail", { recipe })}
+                  onFavorite={toggleFavorite}
+                  isFavorited={isFavorited(recipe)}
+                  compact
+                />
+              ))}
+            </ScrollView>
+          </View>
+        ))}
+
+        <View style={{ height: 100 }} />
       </ScrollView>
 
-      <Modal
-        visible={showApiKeyModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowApiKeyModal(false)}
-      >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          style={styles.modalOverlay}
-        >
+      <Modal visible={showApiModal} transparent animationType="fade">
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <View style={styles.modalIconContainer}>
-                <Feather name="key" size={24} color="#6366f1" />
+              <View style={styles.modalIcon}>
+                <Ionicons name="key-outline" size={28} color={COLORS.primary} />
               </View>
-              <Text style={styles.modalTitle}>API Configuration</Text>
+              <Text style={styles.modalTitle}>OpenAI API Key</Text>
+              <Text style={styles.modalSubtitle}>Required for AI-powered food recognition</Text>
             </View>
-            <Text style={styles.modalSubtitle}>
-              Enter your OpenAI API key to enable image analysis. Your key is
-              stored securely on your device.
-            </Text>
-
-            <View style={styles.inputContainer}>
-              <Feather
-                name="lock"
-                size={18}
-                color="#94a3b8"
-                style={styles.inputIcon}
-              />
-              <TextInput
-                style={styles.apiKeyInput}
-                placeholder="sk-..."
-                placeholderTextColor="#94a3b8"
-                value={tempApiKey}
-                onChangeText={setTempApiKey}
-                autoCapitalize="none"
-                autoCorrect={false}
-                secureTextEntry
-              />
-            </View>
-
+            <TextInput
+              style={styles.apiInput}
+              placeholder="sk-..."
+              placeholderTextColor={COLORS.textLight}
+              value={tempApiKey}
+              onChangeText={setTempApiKey}
+              secureTextEntry
+              autoCapitalize="none"
+            />
             <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={styles.modalCancelButton}
-                onPress={() => setShowApiKeyModal(false)}
-              >
+              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setShowApiModal(false)}>
                 <Text style={styles.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
-
               <TouchableOpacity
-                style={[
-                  styles.modalSaveButton,
-                  !tempApiKey && styles.modalSaveButtonDisabled,
-                ]}
+                style={[styles.modalSaveBtn, !tempApiKey && styles.modalSaveBtnDisabled]}
                 onPress={saveApiKey}
                 disabled={!tempApiKey}
               >
-                <Feather name="check" size={18} color="#fff" />
                 <Text style={styles.modalSaveText}>Save Key</Text>
               </TouchableOpacity>
             </View>
@@ -373,1091 +539,211 @@ function HomeScreen({ navigation }) {
   );
 }
 
-function ResultScreen({ route, navigation }) {
-  const { result, raw, imageUri, apiKey } = route.params;
-  const [selectedCategory, setSelectedCategory] = useState("All");
-  const [expandedRecipe, setExpandedRecipe] = useState(null);
-  
-  const hasStructuredData = result && result.products && result.recipes;
-  
-  const [products, setProducts] = useState(hasStructuredData ? result.products : []);
-  const [recipes, setRecipes] = useState(hasStructuredData ? result.recipes : []);
+function IngredientsTab({ navigation }) {
+  const [ingredients, setIngredients] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editingIndex, setEditingIndex] = useState(null);
+  const [editName, setEditName] = useState("");
+  const [editQuantity, setEditQuantity] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [editingProduct, setEditingProduct] = useState(null);
-  const [newProductName, setNewProductName] = useState("");
-  const [newProductQuantity, setNewProductQuantity] = useState("");
-  const [refreshingRecipes, setRefreshingRecipes] = useState(false);
-  const [productsChanged, setProductsChanged] = useState(false);
-  const [favoriteRecipes, setFavoriteRecipes] = useState([]);
+  const [newName, setNewName] = useState("");
+  const [newQuantity, setNewQuantity] = useState("");
 
   useEffect(() => {
-    loadFavorites();
-    saveToHistory();
-  }, []);
+    loadIngredients();
+    const unsubscribe = navigation.addListener("focus", loadIngredients);
+    return unsubscribe;
+  }, [navigation]);
 
-  const loadFavorites = async () => {
+  const loadIngredients = async () => {
     try {
-      const saved = await AsyncStorage.getItem(FAVORITES_STORAGE);
-      if (saved) {
-        setFavoriteRecipes(JSON.parse(saved));
-      }
+      const saved = await AsyncStorage.getItem(INGREDIENTS_STORAGE);
+      if (saved) setIngredients(JSON.parse(saved));
     } catch (e) {
-      console.error("Failed to load favorites:", e);
-    }
-  };
-
-  const saveToHistory = async () => {
-    if (!hasStructuredData) return;
-    try {
-      const saved = await AsyncStorage.getItem(HISTORY_STORAGE);
-      const history = saved ? JSON.parse(saved) : [];
-      const newEntry = {
-        id: Date.now().toString(),
-        date: new Date().toISOString(),
-        imageUri,
-        products: result.products,
-        recipes: result.recipes,
-      };
-      const updatedHistory = [newEntry, ...history].slice(0, 30);
-      await AsyncStorage.setItem(HISTORY_STORAGE, JSON.stringify(updatedHistory));
-    } catch (e) {
-      console.error("Failed to save to history:", e);
-    }
-  };
-
-  const isRecipeFavorited = (recipe) => {
-    return favoriteRecipes.some(fav => fav.name === recipe.name);
-  };
-
-  const toggleFavorite = async (recipe) => {
-    try {
-      let updated;
-      if (isRecipeFavorited(recipe)) {
-        updated = favoriteRecipes.filter(fav => fav.name !== recipe.name);
-      } else {
-        const recipeWithDate = { ...recipe, savedAt: new Date().toISOString() };
-        updated = [recipeWithDate, ...favoriteRecipes];
-      }
-      setFavoriteRecipes(updated);
-      await AsyncStorage.setItem(FAVORITES_STORAGE, JSON.stringify(updated));
-    } catch (e) {
-      console.error("Failed to update favorites:", e);
-    }
-  };
-
-  const exportShoppingList = async () => {
-    const additionalIngredients = new Set();
-    recipes.forEach(recipe => {
-      recipe.additional_ingredients?.forEach(ing => additionalIngredients.add(ing));
-    });
-    
-    if (additionalIngredients.size === 0) {
-      Alert.alert("No Items", "No additional ingredients needed for these recipes.");
-      return;
-    }
-    
-    const listText = `🛒 Shopping List from FoodLens\n\n${[...additionalIngredients].map(item => `☐ ${item}`).join('\n')}\n\nGenerated on ${new Date().toLocaleDateString()}`;
-    
-    try {
-      await Share.share({
-        message: listText,
-        title: "Shopping List",
-      });
-    } catch (e) {
-      console.error("Failed to share:", e);
-    }
-  };
-  
-  const addProduct = () => {
-    if (!newProductName.trim()) return;
-    setProducts([...products, { 
-      name: newProductName.trim(), 
-      quantity: newProductQuantity.trim() || null 
-    }]);
-    setNewProductName("");
-    setNewProductQuantity("");
-    setShowAddModal(false);
-    setProductsChanged(true);
-  };
-  
-  const deleteProduct = (index) => {
-    setProducts(products.filter((_, i) => i !== index));
-    setProductsChanged(true);
-  };
-  
-  const startEditProduct = (index) => {
-    setEditingProduct(index);
-    setNewProductName(products[index].name);
-    setNewProductQuantity(products[index].quantity || "");
-    setShowEditModal(true);
-  };
-  
-  const saveEditProduct = () => {
-    if (editingProduct === null || !newProductName.trim()) return;
-    const updated = [...products];
-    updated[editingProduct] = {
-      ...updated[editingProduct],
-      name: newProductName.trim(),
-      quantity: newProductQuantity.trim() || null
-    };
-    setProducts(updated);
-    setEditingProduct(null);
-    setNewProductName("");
-    setNewProductQuantity("");
-    setShowEditModal(false);
-    setProductsChanged(true);
-  };
-  
-  const refreshRecipes = async () => {
-    if (products.length === 0) {
-      Alert.alert("No Products", "Add some products first to generate recipes.");
-      return;
-    }
-    
-    setRefreshingRecipes(true);
-    
-    try {
-      const response = await fetch(`${SERVER_URL}/regenerate-recipes`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "ngrok-skip-browser-warning": "true",
-        },
-        body: JSON.stringify({
-          api_key: apiKey,
-          products: products,
-        }),
-      });
-      
-      const data = await response.json();
-      
-      if (data.error) {
-        Alert.alert("Error", data.error);
-      } else {
-        setRecipes(data.recipes || []);
-        setProductsChanged(false);
-        setSelectedCategory("All");
-      }
-    } catch (e) {
-      console.error("Refresh error:", e);
-      Alert.alert("Error", `Failed to refresh recipes: ${e.message}`);
+      console.error("Failed to load ingredients:", e);
     } finally {
-      setRefreshingRecipes(false);
+      setLoading(false);
     }
   };
 
-  const categories = ["All", ...new Set(recipes.map((r) => r.category))];
-
-  const filteredRecipes =
-    selectedCategory === "All"
-      ? recipes
-      : recipes.filter((r) => r.category === selectedCategory);
-
-  const renderRecipeCard = (recipe, index) => {
-    const isExpanded = expandedRecipe === index;
-    const categoryConfig =
-      CATEGORY_CONFIG[recipe.category] || CATEGORY_CONFIG["All"];
-    const isFavorited = isRecipeFavorited(recipe);
-
-    return (
-      <TouchableOpacity
-        key={index}
-        style={[styles.recipeCard, isExpanded && styles.recipeCardExpanded]}
-        onPress={() => setExpandedRecipe(isExpanded ? null : index)}
-        activeOpacity={0.7}
-      >
-        <View style={styles.recipeHeader}>
-          <View
-            style={[
-              styles.categoryBadge,
-              { backgroundColor: `${categoryConfig.color}15` },
-            ]}
-          >
-            <Ionicons
-              name={categoryConfig.icon}
-              size={14}
-              color={categoryConfig.color}
-            />
-            <Text
-              style={[styles.categoryText, { color: categoryConfig.color }]}
-            >
-              {recipe.category}
-            </Text>
-          </View>
-          <View style={styles.recipeMetaRow}>
-            {recipe.difficulty && (
-              <View style={styles.metaBadge}>
-                <Ionicons
-                  name="speedometer-outline"
-                  size={12}
-                  color="#64748b"
-                />
-                <Text style={styles.metaText}>{recipe.difficulty}</Text>
-              </View>
-            )}
-            {recipe.time && (
-              <View style={styles.metaBadge}>
-                <Ionicons name="time-outline" size={12} color="#64748b" />
-                <Text style={styles.metaText}>{recipe.time}</Text>
-              </View>
-            )}
-            <TouchableOpacity
-              style={styles.favoriteButton}
-              onPress={(e) => {
-                e.stopPropagation();
-                toggleFavorite(recipe);
-              }}
-            >
-              <Ionicons
-                name={isFavorited ? "heart" : "heart-outline"}
-                size={20}
-                color={isFavorited ? "#ef4444" : "#94a3b8"}
-              />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <Text style={styles.recipeName}>{recipe.name}</Text>
-        <Text
-          style={styles.recipeDescription}
-          numberOfLines={isExpanded ? undefined : 2}
-        >
-          {recipe.description}
-        </Text>
-
-        {isExpanded && (
-          <View style={styles.recipeDetails}>
-            <View style={styles.ingredientsSection}>
-              <View style={styles.detailHeader}>
-                <Ionicons name="checkmark-circle" size={18} color="#10b981" />
-                <Text style={styles.detailTitle}>Available Ingredients</Text>
-              </View>
-              <View style={styles.ingredientTags}>
-                {recipe.ingredients_from_image?.map((ing, i) => (
-                  <View key={i} style={styles.ingredientTag}>
-                    <Text style={styles.ingredientTagText}>{ing}</Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-
-            {recipe.additional_ingredients?.length > 0 && (
-              <View style={styles.ingredientsSection}>
-                <View style={styles.detailHeader}>
-                  <Ionicons name="cart-outline" size={18} color="#f59e0b" />
-                  <Text style={styles.detailTitle}>Shopping List</Text>
-                </View>
-                <View style={styles.ingredientTags}>
-                  {recipe.additional_ingredients.map((ing, i) => (
-                    <View
-                      key={i}
-                      style={[styles.ingredientTag, styles.additionalTag]}
-                    >
-                      <Text style={styles.additionalTagText}>{ing}</Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            )}
-
-            <View style={styles.stepsSection}>
-              <View style={styles.detailHeader}>
-                <Ionicons name="list" size={18} color="#6366f1" />
-                <Text style={styles.detailTitle}>Instructions</Text>
-              </View>
-              {recipe.steps?.map((step, i) => (
-                <View key={i} style={styles.stepRow}>
-                  <View style={styles.stepNumber}>
-                    <Text style={styles.stepNumberText}>{i + 1}</Text>
-                  </View>
-                  <Text style={styles.stepText}>{step}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-
-        <View style={styles.expandRow}>
-          <Ionicons
-            name={isExpanded ? "chevron-up" : "chevron-down"}
-            size={18}
-            color="#94a3b8"
-          />
-        </View>
-      </TouchableOpacity>
-    );
+  const saveIngredients = async (updated) => {
+    setIngredients(updated);
+    await AsyncStorage.setItem(INGREDIENTS_STORAGE, JSON.stringify(updated));
   };
+
+  const deleteIngredient = (index) => {
+    Alert.alert("Remove Item", "Remove this ingredient?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Remove",
+        style: "destructive",
+        onPress: () => saveIngredients(ingredients.filter((_, i) => i !== index)),
+      },
+    ]);
+  };
+
+  const startEdit = (index) => {
+    setEditingIndex(index);
+    setEditName(ingredients[index].name);
+    setEditQuantity(ingredients[index].quantity || "");
+  };
+
+  const saveEdit = () => {
+    if (!editName.trim()) return;
+    const updated = [...ingredients];
+    updated[editingIndex] = { name: editName.trim(), quantity: editQuantity.trim() };
+    saveIngredients(updated);
+    setEditingIndex(null);
+  };
+
+  const addIngredient = () => {
+    if (!newName.trim()) return;
+    saveIngredients([...ingredients, { name: newName.trim(), quantity: newQuantity.trim() }]);
+    setNewName("");
+    setNewQuantity("");
+    setShowAddModal(false);
+  };
+
+  const rescanFridge = () => {
+    navigation.navigate("HomeTab");
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 100 }} />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
-
-      <View style={styles.resultHeader}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.backButton}
-        >
-          <Ionicons name="arrow-back" size={24} color="#1a1a2e" />
-        </TouchableOpacity>
-        <Text style={styles.resultHeaderTitle}>Analysis Results</Text>
-        <TouchableOpacity
-          onPress={exportShoppingList}
-          style={styles.shoppingListButton}
-        >
-          <Ionicons name="cart-outline" size={22} color="#1a1a2e" />
-        </TouchableOpacity>
+      
+      <View style={styles.screenHeader}>
+        <Text style={styles.screenTitle}>My Ingredients</Text>
+        <View style={styles.headerActions}>
+          <TouchableOpacity style={styles.headerBtn} onPress={() => setShowAddModal(true)}>
+            <Ionicons name="add" size={24} color={COLORS.primary} />
+          </TouchableOpacity>
+        </View>
       </View>
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.resultScrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.miniImageContainer}>
-          <Image source={{ uri: imageUri }} style={styles.miniImage} />
-          <View style={styles.imageOverlay}>
-            <View style={styles.imageOverlayContent}>
-              <Ionicons name="checkmark-circle" size={20} color="#fff" />
-              <Text style={styles.imageOverlayText}>Scanned</Text>
-            </View>
-          </View>
-        </View>
-
-        {hasStructuredData ? (
-          <>
-            <View style={styles.sectionCard}>
-              <View style={styles.sectionHeader}>
-                <View style={styles.sectionIconContainer}>
-                  <MaterialCommunityIcons
-                    name="fridge-outline"
-                    size={20}
-                    color="#10b981"
-                  />
-                </View>
-                <Text style={styles.sectionHeaderTitle}>Detected Items</Text>
-                <View style={styles.countBadge}>
-                  <Text style={styles.countText}>{products.length}</Text>
-                </View>
-                <TouchableOpacity 
-                  style={styles.addProductButton}
-                  onPress={() => setShowAddModal(true)}
-                >
-                  <Ionicons name="add" size={20} color="#fff" />
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.productsList}>
-                {products.map((item, index) => (
-                  <View key={index} style={styles.productItem}>
-                    <View style={styles.productIcon}>
-                      <Ionicons
-                        name="nutrition-outline"
-                        size={18}
-                        color="#64748b"
-                      />
-                    </View>
-                    <TouchableOpacity 
-                      style={styles.productInfo}
-                      onPress={() => startEditProduct(index)}
-                    >
-                      <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
-                      {item.quantity && (
-                        <View style={styles.quantityBadge}>
-                          <Text style={styles.productQuantity}>{item.quantity}</Text>
-                        </View>
-                      )}
-                    </TouchableOpacity>
-                    <View style={styles.productActions}>
-                      <TouchableOpacity 
-                        style={styles.productEditButton}
-                        onPress={() => startEditProduct(index)}
-                      >
-                        <Feather name="edit-2" size={16} color="#6366f1" />
-                      </TouchableOpacity>
-                      <TouchableOpacity 
-                        style={styles.productDeleteButton}
-                        onPress={() => deleteProduct(index)}
-                      >
-                        <Feather name="trash-2" size={16} color="#ef4444" />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ))}
-              </View>
-            </View>
-
-            <View style={styles.filterSection}>
-              <Text style={styles.filterTitle}>Categories</Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.filterScroll}
-              >
-                {categories.map((cat) => {
-                  const isSelected = selectedCategory === cat;
-                  const catConfig =
-                    CATEGORY_CONFIG[cat] || CATEGORY_CONFIG["All"];
-                  return (
-                    <TouchableOpacity
-                      key={cat}
-                      style={[
-                        styles.filterChip,
-                        isSelected && {
-                          backgroundColor: catConfig.color,
-                          borderColor: catConfig.color,
-                        },
-                      ]}
-                      onPress={() => setSelectedCategory(cat)}
-                    >
-                      <Ionicons
-                        name={catConfig.icon}
-                        size={16}
-                        color={isSelected ? "#fff" : catConfig.color}
-                      />
-                      <Text
-                        style={[
-                          styles.filterChipText,
-                          isSelected && { color: "#fff" },
-                        ]}
-                      >
-                        {cat}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            </View>
-
-            {productsChanged && (
-              <TouchableOpacity
-                style={[styles.refreshRecipesButton, refreshingRecipes && styles.refreshRecipesButtonDisabled]}
-                onPress={refreshRecipes}
-                disabled={refreshingRecipes}
-              >
-                {refreshingRecipes ? (
-                  <View style={styles.refreshingContainer}>
-                    <ActivityIndicator color="#fff" size="small" />
-                    <Text style={styles.refreshRecipesText}>Updating recipes...</Text>
-                  </View>
-                ) : (
-                  <View style={styles.refreshingContainer}>
-                    <Ionicons name="refresh" size={18} color="#fff" />
-                    <Text style={styles.refreshRecipesText}>Update Recipes</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            )}
-
-            <View style={styles.recipesSection}>
-              <View style={styles.sectionHeader}>
-                <View
-                  style={[
-                    styles.sectionIconContainer,
-                    { backgroundColor: "#fef3c7" },
-                  ]}
-                >
-                  <Ionicons
-                    name="restaurant-outline"
-                    size={20}
-                    color="#f59e0b"
-                  />
-                </View>
-                <Text style={styles.sectionHeaderTitle}>
-                  Recipe Suggestions
-                </Text>
-                <View style={styles.countBadge}>
-                  <Text style={styles.countText}>{filteredRecipes.length}</Text>
-                </View>
-                <TouchableOpacity
-                  style={[styles.refreshIconButton, refreshingRecipes && { opacity: 0.5 }]}
-                  onPress={refreshRecipes}
-                  disabled={refreshingRecipes}
-                >
-                  <Ionicons 
-                    name="refresh" 
-                    size={18} 
-                    color="#f59e0b" 
-                  />
-                </TouchableOpacity>
-              </View>
-
-              {filteredRecipes.map((recipe, index) =>
-                renderRecipeCard(recipe, index),
-              )}
-            </View>
-          </>
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+        {ingredients.length === 0 ? (
+          <EmptyState
+            icon="nutrition-outline"
+            title="No ingredients yet"
+            subtitle="Scan your fridge to get started"
+            actionText="Scan Fridge"
+            onAction={rescanFridge}
+          />
         ) : (
-          <View style={styles.rawResultBox}>
-            <View style={styles.rawResultHeader}>
-              <Ionicons
-                name="document-text-outline"
-                size={20}
-                color="#64748b"
-              />
-              <Text style={styles.rawResultTitle}>Analysis Output</Text>
-            </View>
-            <Text style={styles.rawResultText}>
-              {raw || "No results available"}
-            </Text>
+          <View style={styles.ingredientsGrid}>
+            {ingredients.map((item, index) => (
+              <View key={index} style={styles.ingredientCard}>
+                <View style={styles.ingredientCardIcon}>
+                  <Ionicons name="nutrition" size={24} color={COLORS.primary} />
+                </View>
+                <Text style={styles.ingredientCardName} numberOfLines={2}>{item.name}</Text>
+                {item.quantity && (
+                  <Text style={styles.ingredientCardQuantity}>{item.quantity}</Text>
+                )}
+                <View style={styles.ingredientCardActions}>
+                  <TouchableOpacity style={styles.ingredientActionBtn} onPress={() => startEdit(index)}>
+                    <Feather name="edit-2" size={16} color={COLORS.textSecondary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.ingredientActionBtn} onPress={() => deleteIngredient(index)}>
+                    <Feather name="trash-2" size={16} color={COLORS.error} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
           </View>
         )}
 
-        <TouchableOpacity
-          style={styles.newPhotoButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Ionicons name="camera-outline" size={20} color="#fff" />
-          <Text style={styles.newPhotoButtonText}>New Scan</Text>
+        <TouchableOpacity style={styles.rescanButton} onPress={rescanFridge}>
+          <Ionicons name="refresh-outline" size={20} color={COLORS.primary} />
+          <Text style={styles.rescanButtonText}>Rescan Fridge</Text>
         </TouchableOpacity>
+
+        <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* Add Product Modal */}
-      <Modal
-        visible={showAddModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowAddModal(false)}
-      >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          style={styles.modalOverlay}
-        >
+      <Modal visible={editingIndex !== null} transparent animationType="fade">
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <View style={[styles.modalIconContainer, { backgroundColor: "#d1fae5" }]}>
-                <Ionicons name="add-circle-outline" size={24} color="#10b981" />
-              </View>
-              <Text style={styles.modalTitle}>Add Product</Text>
-            </View>
-            
-            <View style={styles.inputContainer}>
-              <Feather name="tag" size={18} color="#94a3b8" style={styles.inputIcon} />
-              <TextInput
-                style={styles.apiKeyInput}
-                placeholder="Product name"
-                placeholderTextColor="#94a3b8"
-                value={newProductName}
-                onChangeText={setNewProductName}
-                autoCapitalize="words"
-              />
-            </View>
-            
-            <View style={styles.inputContainer}>
-              <Feather name="hash" size={18} color="#94a3b8" style={styles.inputIcon} />
-              <TextInput
-                style={styles.apiKeyInput}
-                placeholder="Quantity (optional)"
-                placeholderTextColor="#94a3b8"
-                value={newProductQuantity}
-                onChangeText={setNewProductQuantity}
-              />
-            </View>
-
+            <Text style={styles.modalTitle}>Edit Ingredient</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Name"
+              value={editName}
+              onChangeText={setEditName}
+            />
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Quantity (optional)"
+              value={editQuantity}
+              onChangeText={setEditQuantity}
+            />
             <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={styles.modalCancelButton}
-                onPress={() => {
-                  setShowAddModal(false);
-                  setNewProductName("");
-                  setNewProductQuantity("");
-                }}
-              >
+              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setEditingIndex(null)}>
                 <Text style={styles.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.modalSaveButton, !newProductName.trim() && styles.modalSaveButtonDisabled]}
-                onPress={addProduct}
-                disabled={!newProductName.trim()}
-              >
-                <Ionicons name="add" size={18} color="#fff" />
-                <Text style={styles.modalSaveText}>Add</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      {/* Edit Product Modal */}
-      <Modal
-        visible={showEditModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowEditModal(false)}
-      >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          style={styles.modalOverlay}
-        >
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <View style={[styles.modalIconContainer, { backgroundColor: "#e0e7ff" }]}>
-                <Feather name="edit-2" size={24} color="#6366f1" />
-              </View>
-              <Text style={styles.modalTitle}>Edit Product</Text>
-            </View>
-            
-            <View style={styles.inputContainer}>
-              <Feather name="tag" size={18} color="#94a3b8" style={styles.inputIcon} />
-              <TextInput
-                style={styles.apiKeyInput}
-                placeholder="Product name"
-                placeholderTextColor="#94a3b8"
-                value={newProductName}
-                onChangeText={setNewProductName}
-                autoCapitalize="words"
-              />
-            </View>
-            
-            <View style={styles.inputContainer}>
-              <Feather name="hash" size={18} color="#94a3b8" style={styles.inputIcon} />
-              <TextInput
-                style={styles.apiKeyInput}
-                placeholder="Quantity (optional)"
-                placeholderTextColor="#94a3b8"
-                value={newProductQuantity}
-                onChangeText={setNewProductQuantity}
-              />
-            </View>
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={styles.modalCancelButton}
-                onPress={() => {
-                  setShowEditModal(false);
-                  setEditingProduct(null);
-                  setNewProductName("");
-                  setNewProductQuantity("");
-                }}
-              >
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.modalSaveButton, !newProductName.trim() && styles.modalSaveButtonDisabled]}
-                onPress={saveEditProduct}
-                disabled={!newProductName.trim()}
-              >
-                <Feather name="check" size={18} color="#fff" />
+              <TouchableOpacity style={styles.modalSaveBtn} onPress={saveEdit}>
                 <Text style={styles.modalSaveText}>Save</Text>
               </TouchableOpacity>
             </View>
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <Modal visible={showAddModal} transparent animationType="fade">
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Add Ingredient</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Name"
+              value={newName}
+              onChangeText={setNewName}
+            />
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Quantity (optional)"
+              value={newQuantity}
+              onChangeText={setNewQuantity}
+            />
+            <View style={styles.modalButtons}>
+              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setShowAddModal(false)}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalSaveBtn} onPress={addIngredient}>
+                <Text style={styles.modalSaveText}>Add</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
 
-function HistoryScreen({ navigation }) {
-  const [history, setHistory] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    loadHistory();
-    const unsubscribe = navigation.addListener('focus', loadHistory);
-    return unsubscribe;
-  }, [navigation]);
-
-  const loadHistory = async () => {
-    try {
-      const saved = await AsyncStorage.getItem(HISTORY_STORAGE);
-      if (saved) {
-        setHistory(JSON.parse(saved));
-      }
-    } catch (e) {
-      console.error("Failed to load history:", e);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const clearHistory = async () => {
-    Alert.alert(
-      "Clear History",
-      "Are you sure you want to delete all scan history?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            await AsyncStorage.removeItem(HISTORY_STORAGE);
-            setHistory([]);
-          },
-        },
-      ]
-    );
-  };
-
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString() + " " + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
-
-  const viewHistoryItem = (item) => {
-    navigation.navigate("HistoryDetail", { historyItem: item });
-  };
-
-  return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar style="dark" />
-      <View style={styles.resultHeader}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.backButton}
-        >
-          <Ionicons name="arrow-back" size={24} color="#1a1a2e" />
-        </TouchableOpacity>
-        <Text style={styles.resultHeaderTitle}>Scan History</Text>
-        <TouchableOpacity onPress={clearHistory} style={styles.backButton}>
-          <Ionicons name="trash-outline" size={22} color="#ef4444" />
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.resultScrollContent}>
-        {loading ? (
-          <ActivityIndicator size="large" color="#6366f1" style={{ marginTop: 40 }} />
-        ) : history.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Ionicons name="time-outline" size={64} color="#e2e8f0" />
-            <Text style={styles.emptyStateTitle}>No Scan History</Text>
-            <Text style={styles.emptyStateText}>Your scanned items will appear here</Text>
-          </View>
-        ) : (
-          history.map((item, index) => (
-            <TouchableOpacity 
-              key={item.id || index} 
-              style={styles.historyCard}
-              onPress={() => viewHistoryItem(item)}
-              activeOpacity={0.7}
-            >
-              <Image source={{ uri: item.imageUri }} style={styles.historyImage} />
-              <View style={styles.historyInfo}>
-                <Text style={styles.historyDate}>{formatDate(item.date)}</Text>
-                <Text style={styles.historyStats}>
-                  {item.products?.length || 0} items • {item.recipes?.length || 0} recipes
-                </Text>
-                <View style={styles.historyProducts}>
-                  {item.products?.slice(0, 3).map((p, i) => (
-                    <Text key={i} style={styles.historyProductTag}>{p.name}</Text>
-                  ))}
-                  {item.products?.length > 3 && (
-                    <Text style={styles.historyMoreTag}>+{item.products.length - 3}</Text>
-                  )}
-                </View>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color="#94a3b8" />
-            </TouchableOpacity>
-          ))
-        )}
-      </ScrollView>
-    </SafeAreaView>
-  );
-}
-
-function HistoryDetailScreen({ route, navigation }) {
-  const { historyItem } = route.params;
-  const [selectedCategory, setSelectedCategory] = useState("All");
-  const [expandedRecipe, setExpandedRecipe] = useState(null);
-  const [favoriteRecipes, setFavoriteRecipes] = useState([]);
-
-  const products = historyItem.products || [];
-  const recipes = historyItem.recipes || [];
-
-  useEffect(() => {
-    loadFavorites();
-  }, []);
-
-  const loadFavorites = async () => {
-    try {
-      const saved = await AsyncStorage.getItem(FAVORITES_STORAGE);
-      if (saved) {
-        setFavoriteRecipes(JSON.parse(saved));
-      }
-    } catch (e) {
-      console.error("Failed to load favorites:", e);
-    }
-  };
-
-  const isRecipeFavorited = (recipe) => {
-    return favoriteRecipes.some(fav => fav.name === recipe.name);
-  };
-
-  const toggleFavorite = async (recipe) => {
-    try {
-      let updated;
-      if (isRecipeFavorited(recipe)) {
-        updated = favoriteRecipes.filter(fav => fav.name !== recipe.name);
-      } else {
-        const recipeWithDate = { ...recipe, savedAt: new Date().toISOString() };
-        updated = [recipeWithDate, ...favoriteRecipes];
-      }
-      setFavoriteRecipes(updated);
-      await AsyncStorage.setItem(FAVORITES_STORAGE, JSON.stringify(updated));
-    } catch (e) {
-      console.error("Failed to update favorites:", e);
-    }
-  };
-
-  const exportShoppingList = async () => {
-    const additionalIngredients = new Set();
-    recipes.forEach(recipe => {
-      recipe.additional_ingredients?.forEach(ing => additionalIngredients.add(ing));
-    });
-    
-    if (additionalIngredients.size === 0) {
-      Alert.alert("No Items", "No additional ingredients needed for these recipes.");
-      return;
-    }
-    
-    const listText = `🛒 Shopping List from FoodLens\n\n${[...additionalIngredients].map(item => `☐ ${item}`).join('\n')}\n\nGenerated on ${new Date().toLocaleDateString()}`;
-    
-    try {
-      await Share.share({
-        message: listText,
-        title: "Shopping List",
-      });
-    } catch (e) {
-      console.error("Failed to share:", e);
-    }
-  };
-
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString() + " at " + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
-
-  const categories = ["All", ...new Set(recipes.map((r) => r.category))];
-  const filteredRecipes = selectedCategory === "All" 
-    ? recipes 
-    : recipes.filter((r) => r.category === selectedCategory);
-
-  const renderRecipeCard = (recipe, index) => {
-    const isExpanded = expandedRecipe === index;
-    const categoryConfig = CATEGORY_CONFIG[recipe.category] || CATEGORY_CONFIG["All"];
-    const isFavorited = isRecipeFavorited(recipe);
-
-    return (
-      <TouchableOpacity
-        key={index}
-        style={[styles.recipeCard, isExpanded && styles.recipeCardExpanded]}
-        onPress={() => setExpandedRecipe(isExpanded ? null : index)}
-        activeOpacity={0.7}
-      >
-        <View style={styles.recipeHeader}>
-          <View style={[styles.categoryBadge, { backgroundColor: `${categoryConfig.color}15` }]}>
-            <Ionicons name={categoryConfig.icon} size={14} color={categoryConfig.color} />
-            <Text style={[styles.categoryText, { color: categoryConfig.color }]}>{recipe.category}</Text>
-          </View>
-          <View style={styles.recipeMetaRow}>
-            {recipe.difficulty && (
-              <View style={styles.metaBadge}>
-                <Ionicons name="speedometer-outline" size={12} color="#64748b" />
-                <Text style={styles.metaText}>{recipe.difficulty}</Text>
-              </View>
-            )}
-            {recipe.time && (
-              <View style={styles.metaBadge}>
-                <Ionicons name="time-outline" size={12} color="#64748b" />
-                <Text style={styles.metaText}>{recipe.time}</Text>
-              </View>
-            )}
-            <TouchableOpacity
-              style={styles.favoriteButton}
-              onPress={(e) => {
-                e.stopPropagation();
-                toggleFavorite(recipe);
-              }}
-            >
-              <Ionicons
-                name={isFavorited ? "heart" : "heart-outline"}
-                size={20}
-                color={isFavorited ? "#ef4444" : "#94a3b8"}
-              />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <Text style={styles.recipeName}>{recipe.name}</Text>
-        <Text style={styles.recipeDescription} numberOfLines={isExpanded ? undefined : 2}>
-          {recipe.description}
-        </Text>
-
-        {isExpanded && (
-          <View style={styles.recipeDetails}>
-            <View style={styles.ingredientsSection}>
-              <View style={styles.detailHeader}>
-                <Ionicons name="checkmark-circle" size={18} color="#10b981" />
-                <Text style={styles.detailTitle}>Available Ingredients</Text>
-              </View>
-              <View style={styles.ingredientTags}>
-                {recipe.ingredients_from_image?.map((ing, i) => (
-                  <View key={i} style={styles.ingredientTag}>
-                    <Text style={styles.ingredientTagText}>{ing}</Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-
-            {recipe.additional_ingredients?.length > 0 && (
-              <View style={styles.ingredientsSection}>
-                <View style={styles.detailHeader}>
-                  <Ionicons name="cart-outline" size={18} color="#f59e0b" />
-                  <Text style={styles.detailTitle}>Shopping List</Text>
-                </View>
-                <View style={styles.ingredientTags}>
-                  {recipe.additional_ingredients.map((ing, i) => (
-                    <View key={i} style={[styles.ingredientTag, styles.additionalTag]}>
-                      <Text style={styles.additionalTagText}>{ing}</Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            )}
-
-            <View style={styles.stepsSection}>
-              <View style={styles.detailHeader}>
-                <Ionicons name="list" size={18} color="#6366f1" />
-                <Text style={styles.detailTitle}>Instructions</Text>
-              </View>
-              {recipe.steps?.map((step, i) => (
-                <View key={i} style={styles.stepRow}>
-                  <View style={styles.stepNumber}>
-                    <Text style={styles.stepNumberText}>{i + 1}</Text>
-                  </View>
-                  <Text style={styles.stepText}>{step}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-
-        <View style={styles.expandRow}>
-          <Ionicons name={isExpanded ? "chevron-up" : "chevron-down"} size={18} color="#94a3b8" />
-        </View>
-      </TouchableOpacity>
-    );
-  };
-
-  return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar style="dark" />
-
-      <View style={styles.resultHeader}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color="#1a1a2e" />
-        </TouchableOpacity>
-        <Text style={styles.resultHeaderTitle}>Scan Details</Text>
-        <TouchableOpacity onPress={exportShoppingList} style={styles.shoppingListButton}>
-          <Ionicons name="cart-outline" size={22} color="#1a1a2e" />
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.resultScrollContent}>
-        <View style={styles.miniImageContainer}>
-          <Image source={{ uri: historyItem.imageUri }} style={styles.miniImage} />
-          <View style={styles.imageOverlay}>
-            <View style={styles.imageOverlayContent}>
-              <Ionicons name="time-outline" size={16} color="#fff" />
-              <Text style={styles.imageOverlayText}>{formatDate(historyItem.date)}</Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionIconContainer}>
-              <MaterialCommunityIcons name="fridge-outline" size={20} color="#10b981" />
-            </View>
-            <Text style={styles.sectionHeaderTitle}>Detected Items</Text>
-            <View style={styles.countBadge}>
-              <Text style={styles.countText}>{products.length}</Text>
-            </View>
-          </View>
-
-          <View style={styles.productsList}>
-            {products.map((item, index) => (
-              <View key={index} style={styles.productItem}>
-                <View style={styles.productIcon}>
-                  <Ionicons name="nutrition-outline" size={18} color="#64748b" />
-                </View>
-                <View style={styles.productInfo}>
-                  <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
-                  {item.quantity && (
-                    <View style={styles.quantityBadge}>
-                      <Text style={styles.productQuantity}>{item.quantity}</Text>
-                    </View>
-                  )}
-                </View>
-              </View>
-            ))}
-          </View>
-        </View>
-
-        {recipes.length > 0 && (
-          <>
-            <View style={styles.filterSection}>
-              <Text style={styles.filterTitle}>Categories</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
-                {categories.map((cat) => {
-                  const isSelected = selectedCategory === cat;
-                  const catConfig = CATEGORY_CONFIG[cat] || CATEGORY_CONFIG["All"];
-                  return (
-                    <TouchableOpacity
-                      key={cat}
-                      style={[
-                        styles.filterChip,
-                        isSelected && { backgroundColor: catConfig.color, borderColor: catConfig.color },
-                      ]}
-                      onPress={() => setSelectedCategory(cat)}
-                    >
-                      <Ionicons name={catConfig.icon} size={16} color={isSelected ? "#fff" : catConfig.color} />
-                      <Text style={[styles.filterChipText, isSelected && { color: "#fff" }]}>{cat}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            </View>
-
-            <View style={styles.recipesSection}>
-              <View style={styles.sectionHeader}>
-                <View style={[styles.sectionIconContainer, { backgroundColor: "#fef3c7" }]}>
-                  <Ionicons name="restaurant-outline" size={20} color="#f59e0b" />
-                </View>
-                <Text style={styles.sectionHeaderTitle}>Recipe Suggestions</Text>
-                <View style={styles.countBadge}>
-                  <Text style={styles.countText}>{filteredRecipes.length}</Text>
-                </View>
-              </View>
-
-              {filteredRecipes.map((recipe, index) => renderRecipeCard(recipe, index))}
-            </View>
-          </>
-        )}
-      </ScrollView>
-    </SafeAreaView>
-  );
-}
-
-function FavoritesScreen({ navigation }) {
+function FavoritesTab({ navigation }) {
   const [favorites, setFavorites] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [expandedRecipe, setExpandedRecipe] = useState(null);
+  const [selectedCategory, setSelectedCategory] = useState("All");
 
   useEffect(() => {
     loadFavorites();
-    const unsubscribe = navigation.addListener('focus', loadFavorites);
+    const unsubscribe = navigation.addListener("focus", loadFavorites);
     return unsubscribe;
   }, [navigation]);
 
   const loadFavorites = async () => {
     try {
       const saved = await AsyncStorage.getItem(FAVORITES_STORAGE);
-      if (saved) {
-        setFavorites(JSON.parse(saved));
-      }
+      if (saved) setFavorites(JSON.parse(saved));
     } catch (e) {
       console.error("Failed to load favorites:", e);
     } finally {
@@ -1465,142 +751,452 @@ function FavoritesScreen({ navigation }) {
     }
   };
 
-  const removeFavorite = async (recipeName) => {
-    const updated = favorites.filter(fav => fav.name !== recipeName);
+  const removeFavorite = async (recipe) => {
+    const updated = favorites.filter((f) => f.name !== recipe.name);
     setFavorites(updated);
     await AsyncStorage.setItem(FAVORITES_STORAGE, JSON.stringify(updated));
   };
 
-  const exportFavorites = async () => {
-    if (favorites.length === 0) {
-      Alert.alert("No Favorites", "Save some recipes first!");
+  const categories = ["All", ...new Set(favorites.map((r) => r.category).filter(Boolean))];
+  const filteredFavorites = selectedCategory === "All"
+    ? favorites
+    : favorites.filter((r) => r.category === selectedCategory);
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 100 }} />
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <StatusBar style="dark" />
+      
+      <View style={styles.screenHeader}>
+        <Text style={styles.screenTitle}>Favorites</Text>
+        <View style={styles.countBadgeLarge}>
+          <Ionicons name="heart" size={16} color={COLORS.error} />
+          <Text style={styles.countTextLarge}>{favorites.length}</Text>
+        </View>
+      </View>
+
+      {favorites.length > 0 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
+          {categories.map((cat) => (
+            <TouchableOpacity
+              key={cat}
+              style={[styles.filterChip, selectedCategory === cat && styles.filterChipActive]}
+              onPress={() => setSelectedCategory(cat)}
+            >
+              <Text style={[styles.filterChipText, selectedCategory === cat && styles.filterChipTextActive]}>
+                {cat}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
+
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+        {favorites.length === 0 ? (
+          <EmptyState
+            icon="heart-outline"
+            title="No favorites yet"
+            subtitle="Save recipes you love for quick access"
+          />
+        ) : (
+          <View style={styles.favoritesGrid}>
+            {filteredFavorites.map((recipe, i) => (
+              <RecipeCard
+                key={i}
+                recipe={recipe}
+                onPress={() => navigation.navigate("RecipeDetail", { recipe })}
+                onFavorite={removeFavorite}
+                isFavorited={true}
+              />
+            ))}
+          </View>
+        )}
+        <View style={{ height: 100 }} />
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+function ShoppingListTab({ navigation }) {
+  const [shoppingList, setShoppingList] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [newItem, setNewItem] = useState("");
+
+  useEffect(() => {
+    loadShoppingList();
+    const unsubscribe = navigation.addListener("focus", loadShoppingList);
+    return unsubscribe;
+  }, [navigation]);
+
+  const loadShoppingList = async () => {
+    try {
+      const saved = await AsyncStorage.getItem(SHOPPING_LIST_STORAGE);
+      if (saved) setShoppingList(JSON.parse(saved));
+    } catch (e) {
+      console.error("Failed to load shopping list:", e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveList = async (list) => {
+    setShoppingList(list);
+    await AsyncStorage.setItem(SHOPPING_LIST_STORAGE, JSON.stringify(list));
+  };
+
+  const toggleItem = (index) => {
+    const updated = [...shoppingList];
+    updated[index].checked = !updated[index].checked;
+    saveList(updated);
+  };
+
+  const addItem = () => {
+    if (!newItem.trim()) return;
+    saveList([...shoppingList, { name: newItem.trim(), checked: false }]);
+    setNewItem("");
+  };
+
+  const removeItem = (index) => {
+    saveList(shoppingList.filter((_, i) => i !== index));
+  };
+
+  const clearChecked = () => {
+    saveList(shoppingList.filter((item) => !item.checked));
+  };
+
+  const shareList = async () => {
+    const unchecked = shoppingList.filter((item) => !item.checked);
+    if (unchecked.length === 0) {
+      Alert.alert("Empty List", "No items to share.");
       return;
     }
-    const text = favorites.map(r => `📖 ${r.name}\n${r.description || ''}\n\nIngredients: ${r.ingredients_from_image?.join(', ') || 'N/A'}\n\nSteps:\n${r.steps?.map((s, i) => `${i+1}. ${s}`).join('\n') || 'N/A'}`).join('\n\n---\n\n');
+    const text = `🛒 Shopping List\n\n${unchecked.map((item) => `☐ ${item.name}`).join("\n")}`;
     try {
-      await Share.share({ message: `My Favorite Recipes\n\n${text}`, title: "Favorite Recipes" });
+      await Share.share({ message: text });
     } catch (e) {
-      console.error("Failed to share:", e);
+      console.error("Share error:", e);
+    }
+  };
+
+  const copyList = async () => {
+    const unchecked = shoppingList.filter((item) => !item.checked);
+    if (unchecked.length === 0) {
+      Alert.alert("Empty List", "No items to copy.");
+      return;
+    }
+    const text = unchecked.map((item) => `• ${item.name}`).join("\n");
+    Alert.alert("Copied!", "Shopping list copied to clipboard.");
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 100 }} />
+      </SafeAreaView>
+    );
+  }
+
+  const checkedCount = shoppingList.filter((item) => item.checked).length;
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <StatusBar style="dark" />
+      
+      <View style={styles.screenHeader}>
+        <Text style={styles.screenTitle}>Shopping List</Text>
+        <View style={styles.headerActions}>
+          <TouchableOpacity style={styles.headerBtn} onPress={shareList}>
+            <Ionicons name="share-outline" size={22} color={COLORS.text} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.headerBtn} onPress={copyList}>
+            <Ionicons name="copy-outline" size={22} color={COLORS.text} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <View style={styles.addItemRow}>
+        <TextInput
+          style={styles.addItemInput}
+          placeholder="Add item..."
+          placeholderTextColor={COLORS.textLight}
+          value={newItem}
+          onChangeText={setNewItem}
+          onSubmitEditing={addItem}
+          returnKeyType="done"
+        />
+        <TouchableOpacity style={styles.addItemBtn} onPress={addItem}>
+          <Ionicons name="add" size={24} color="#fff" />
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+        {shoppingList.length === 0 ? (
+          <EmptyState
+            icon="cart-outline"
+            title="Your list is empty"
+            subtitle="Add items or generate from recipes"
+          />
+        ) : (
+          <>
+            {shoppingList.map((item, index) => (
+              <TouchableOpacity
+                key={index}
+                style={[styles.shoppingItem, item.checked && styles.shoppingItemChecked]}
+                onPress={() => toggleItem(index)}
+              >
+                <View style={[styles.checkbox, item.checked && styles.checkboxChecked]}>
+                  {item.checked && <Ionicons name="checkmark" size={16} color="#fff" />}
+                </View>
+                <Text style={[styles.shoppingItemText, item.checked && styles.shoppingItemTextChecked]}>
+                  {item.name}
+                </Text>
+                <TouchableOpacity onPress={() => removeItem(index)} style={styles.removeItemBtn}>
+                  <Ionicons name="close" size={20} color={COLORS.textLight} />
+                </TouchableOpacity>
+              </TouchableOpacity>
+            ))}
+
+            {checkedCount > 0 && (
+              <TouchableOpacity style={styles.clearCheckedBtn} onPress={clearChecked}>
+                <Ionicons name="trash-outline" size={18} color={COLORS.error} />
+                <Text style={styles.clearCheckedText}>Clear {checkedCount} checked items</Text>
+              </TouchableOpacity>
+            )}
+          </>
+        )}
+        <View style={{ height: 100 }} />
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+function RecipeDetailScreen({ route, navigation }) {
+  const { recipe } = route.params;
+  const [isFavorited, setIsFavorited] = useState(false);
+  const [checkedIngredients, setCheckedIngredients] = useState({});
+  const categoryConfig = CATEGORY_CONFIG[recipe.category] || CATEGORY_CONFIG.All;
+
+  useEffect(() => {
+    checkFavorite();
+  }, []);
+
+  const checkFavorite = async () => {
+    try {
+      const saved = await AsyncStorage.getItem(FAVORITES_STORAGE);
+      if (saved) {
+        const favorites = JSON.parse(saved);
+        setIsFavorited(favorites.some((f) => f.name === recipe.name));
+      }
+    } catch (e) {
+      console.error("Failed to check favorite:", e);
+    }
+  };
+
+  const toggleFavorite = async () => {
+    try {
+      const saved = await AsyncStorage.getItem(FAVORITES_STORAGE);
+      let favorites = saved ? JSON.parse(saved) : [];
+      if (isFavorited) {
+        favorites = favorites.filter((f) => f.name !== recipe.name);
+      } else {
+        favorites = [{ ...recipe, savedAt: new Date().toISOString() }, ...favorites];
+      }
+      await AsyncStorage.setItem(FAVORITES_STORAGE, JSON.stringify(favorites));
+      setIsFavorited(!isFavorited);
+    } catch (e) {
+      console.error("Failed to toggle favorite:", e);
+    }
+  };
+
+  const toggleIngredient = (ing) => {
+    setCheckedIngredients((prev) => ({ ...prev, [ing]: !prev[ing] }));
+  };
+
+  const addMissingToShoppingList = async () => {
+    const missing = recipe.additional_ingredients || [];
+    if (missing.length === 0) {
+      Alert.alert("All Set!", "You have all the ingredients.");
+      return;
+    }
+
+    try {
+      const saved = await AsyncStorage.getItem(SHOPPING_LIST_STORAGE);
+      let list = saved ? JSON.parse(saved) : [];
+      const existingNames = list.map((item) => item.name.toLowerCase());
+      const newItems = missing
+        .filter((item) => !existingNames.includes(item.toLowerCase()))
+        .map((name) => ({ name, checked: false }));
+      
+      if (newItems.length === 0) {
+        Alert.alert("Already Added", "All missing ingredients are in your shopping list.");
+        return;
+      }
+
+      await AsyncStorage.setItem(SHOPPING_LIST_STORAGE, JSON.stringify([...list, ...newItems]));
+      Alert.alert("Added!", `${newItems.length} items added to shopping list.`);
+    } catch (e) {
+      console.error("Failed to add to shopping list:", e);
     }
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar style="dark" />
-      <View style={styles.resultHeader}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.backButton}
-        >
-          <Ionicons name="arrow-back" size={24} color="#1a1a2e" />
-        </TouchableOpacity>
-        <Text style={styles.resultHeaderTitle}>Favorite Recipes</Text>
-        <TouchableOpacity onPress={exportFavorites} style={styles.backButton}>
-          <Ionicons name="share-outline" size={22} color="#6366f1" />
-        </TouchableOpacity>
+      <StatusBar style="light" />
+      
+      <View style={styles.recipeDetailHeader}>
+        <View style={[styles.recipeHeroPlaceholder, { backgroundColor: `${categoryConfig.color}30` }]}>
+          <Text style={styles.recipeHeroEmoji}>{categoryConfig.emoji}</Text>
+        </View>
+        
+        <View style={styles.recipeDetailNav}>
+          <TouchableOpacity style={styles.navBtn} onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={24} color="#fff" />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.navBtn} onPress={toggleFavorite}>
+            <Ionicons name={isFavorited ? "heart" : "heart-outline"} size={24} color={isFavorited ? COLORS.error : "#fff"} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.recipeDetailTitleContainer}>
+          <View style={[styles.categoryPillLarge, { backgroundColor: categoryConfig.color }]}>
+            <Ionicons name={categoryConfig.icon} size={16} color="#fff" />
+            <Text style={styles.categoryPillTextLarge}>{recipe.category}</Text>
+          </View>
+          <Text style={styles.recipeDetailTitle}>{recipe.name}</Text>
+          <View style={styles.recipeDetailMeta}>
+            {recipe.time && (
+              <View style={styles.metaItemLarge}>
+                <Ionicons name="time-outline" size={18} color={COLORS.textSecondary} />
+                <Text style={styles.metaTextLarge}>{recipe.time}</Text>
+              </View>
+            )}
+            {recipe.difficulty && (
+              <View style={styles.metaItemLarge}>
+                <Ionicons name="speedometer-outline" size={18} color={COLORS.textSecondary} />
+                <Text style={styles.metaTextLarge}>{recipe.difficulty}</Text>
+              </View>
+            )}
+          </View>
+        </View>
       </View>
 
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.resultScrollContent}>
-        {loading ? (
-          <ActivityIndicator size="large" color="#6366f1" style={{ marginTop: 40 }} />
-        ) : favorites.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Ionicons name="heart-outline" size={64} color="#e2e8f0" />
-            <Text style={styles.emptyStateTitle}>No Favorites Yet</Text>
-            <Text style={styles.emptyStateText}>Tap the heart icon on recipes to save them</Text>
+      <ScrollView style={styles.recipeDetailScroll}>
+        {recipe.description && (
+          <View style={styles.recipeSection}>
+            <Text style={styles.recipeDescription}>{recipe.description}</Text>
           </View>
-        ) : (
-          favorites.map((recipe, index) => {
-            const isExpanded = expandedRecipe === index;
-            const categoryConfig = CATEGORY_CONFIG[recipe.category] || CATEGORY_CONFIG["All"];
-            
-            return (
-              <TouchableOpacity
-                key={index}
-                style={[styles.recipeCard, isExpanded && styles.recipeCardExpanded]}
-                onPress={() => setExpandedRecipe(isExpanded ? null : index)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.recipeHeader}>
-                  <View style={[styles.categoryBadge, { backgroundColor: `${categoryConfig.color}15` }]}>
-                    <Ionicons name={categoryConfig.icon} size={14} color={categoryConfig.color} />
-                    <Text style={[styles.categoryText, { color: categoryConfig.color }]}>{recipe.category}</Text>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.favoriteButton}
-                    onPress={() => removeFavorite(recipe.name)}
-                  >
-                    <Ionicons name="heart" size={20} color="#ef4444" />
-                  </TouchableOpacity>
-                </View>
-
-                <Text style={styles.recipeName}>{recipe.name}</Text>
-                <Text style={styles.recipeDescription} numberOfLines={isExpanded ? undefined : 2}>
-                  {recipe.description}
-                </Text>
-
-                {isExpanded && (
-                  <View style={styles.recipeDetails}>
-                    {recipe.ingredients_from_image?.length > 0 && (
-                      <View style={styles.ingredientsSection}>
-                        <View style={styles.detailHeader}>
-                          <Ionicons name="checkmark-circle" size={18} color="#10b981" />
-                          <Text style={styles.detailTitle}>Ingredients</Text>
-                        </View>
-                        <View style={styles.ingredientTags}>
-                          {recipe.ingredients_from_image.map((ing, i) => (
-                            <View key={i} style={styles.ingredientTag}>
-                              <Text style={styles.ingredientTagText}>{ing}</Text>
-                            </View>
-                          ))}
-                        </View>
-                      </View>
-                    )}
-                    {recipe.steps?.length > 0 && (
-                      <View style={styles.stepsSection}>
-                        <View style={styles.detailHeader}>
-                          <Ionicons name="list" size={18} color="#6366f1" />
-                          <Text style={styles.detailTitle}>Instructions</Text>
-                        </View>
-                        {recipe.steps.map((step, i) => (
-                          <View key={i} style={styles.stepRow}>
-                            <View style={styles.stepNumber}>
-                              <Text style={styles.stepNumberText}>{i + 1}</Text>
-                            </View>
-                            <Text style={styles.stepText}>{step}</Text>
-                          </View>
-                        ))}
-                      </View>
-                    )}
-                  </View>
-                )}
-
-                <View style={styles.expandRow}>
-                  <Ionicons name={isExpanded ? "chevron-up" : "chevron-down"} size={18} color="#94a3b8" />
-                </View>
-              </TouchableOpacity>
-            );
-          })
         )}
+
+        <View style={styles.recipeSection}>
+          <View style={styles.recipeSectionHeader}>
+            <Ionicons name="checkmark-circle" size={22} color={COLORS.success} />
+            <Text style={styles.recipeSectionTitle}>Available Ingredients</Text>
+          </View>
+          {recipe.ingredients_from_image?.map((ing, i) => (
+            <TouchableOpacity
+              key={i}
+              style={styles.ingredientRow}
+              onPress={() => toggleIngredient(ing)}
+            >
+              <View style={[styles.ingredientCheckbox, checkedIngredients[ing] && styles.ingredientCheckboxChecked]}>
+                {checkedIngredients[ing] && <Ionicons name="checkmark" size={14} color="#fff" />}
+              </View>
+              <Text style={[styles.ingredientRowText, checkedIngredients[ing] && styles.ingredientRowTextChecked]}>
+                {ing}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {recipe.additional_ingredients?.length > 0 && (
+          <View style={styles.recipeSection}>
+            <View style={styles.recipeSectionHeader}>
+              <Ionicons name="cart-outline" size={22} color={COLORS.warning} />
+              <Text style={styles.recipeSectionTitle}>Missing Ingredients</Text>
+            </View>
+            {recipe.additional_ingredients.map((ing, i) => (
+              <View key={i} style={styles.missingIngredientRow}>
+                <Ionicons name="add-circle-outline" size={18} color={COLORS.warning} />
+                <Text style={styles.missingIngredientText}>{ing}</Text>
+              </View>
+            ))}
+            <TouchableOpacity style={styles.addToListBtn} onPress={addMissingToShoppingList}>
+              <Ionicons name="cart" size={20} color="#fff" />
+              <Text style={styles.addToListBtnText}>Add to Shopping List</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {recipe.steps?.length > 0 && (
+          <View style={styles.recipeSection}>
+            <View style={styles.recipeSectionHeader}>
+              <Ionicons name="list" size={22} color={COLORS.primary} />
+              <Text style={styles.recipeSectionTitle}>Instructions</Text>
+            </View>
+            {recipe.steps.map((step, i) => (
+              <View key={i} style={styles.stepRow}>
+                <View style={styles.stepNumber}>
+                  <Text style={styles.stepNumberText}>{i + 1}</Text>
+                </View>
+                <Text style={styles.stepText}>{step}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        <TouchableOpacity style={styles.saveRecipeBtn} onPress={toggleFavorite}>
+          <Ionicons name={isFavorited ? "heart" : "heart-outline"} size={22} color="#fff" />
+          <Text style={styles.saveRecipeBtnText}>
+            {isFavorited ? "Remove from Favorites" : "Save to Favorites"}
+          </Text>
+        </TouchableOpacity>
+
+        <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function TabNavigator() {
+  return (
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        headerShown: false,
+        tabBarStyle: styles.tabBar,
+        tabBarActiveTintColor: COLORS.primary,
+        tabBarInactiveTintColor: COLORS.textLight,
+        tabBarLabelStyle: styles.tabBarLabel,
+        tabBarIcon: ({ focused, color, size }) => {
+          let iconName;
+          if (route.name === "HomeTab") iconName = focused ? "home" : "home-outline";
+          else if (route.name === "IngredientsTab") iconName = focused ? "nutrition" : "nutrition-outline";
+          else if (route.name === "FavoritesTab") iconName = focused ? "heart" : "heart-outline";
+          else if (route.name === "ShoppingTab") iconName = focused ? "cart" : "cart-outline";
+          return <Ionicons name={iconName} size={24} color={color} />;
+        },
+      })}
+    >
+      <Tab.Screen name="HomeTab" component={HomeTab} options={{ tabBarLabel: "Home" }} />
+      <Tab.Screen name="IngredientsTab" component={IngredientsTab} options={{ tabBarLabel: "Ingredients" }} />
+      <Tab.Screen name="FavoritesTab" component={FavoritesTab} options={{ tabBarLabel: "Favorites" }} />
+      <Tab.Screen name="ShoppingTab" component={ShoppingListTab} options={{ tabBarLabel: "Shopping" }} />
+    </Tab.Navigator>
   );
 }
 
 export default function App() {
   return (
     <NavigationContainer>
-      <Stack.Navigator
-        screenOptions={{
-          headerShown: false,
-          animation: "slide_from_right",
-        }}
-      >
-        <Stack.Screen name="Home" component={HomeScreen} />
-        <Stack.Screen name="Result" component={ResultScreen} />
-        <Stack.Screen name="History" component={HistoryScreen} />
-        <Stack.Screen name="HistoryDetail" component={HistoryDetailScreen} />
-        <Stack.Screen name="Favorites" component={FavoritesScreen} />
+      <Stack.Navigator screenOptions={{ headerShown: false, animation: "slide_from_right" }}>
+        <Stack.Screen name="MainTabs" component={TabNavigator} />
+        <Stack.Screen name="RecipeDetail" component={RecipeDetailScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );
@@ -1609,778 +1205,846 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f8fafc",
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingTop: 60,
-    paddingHorizontal: 24,
-  },
-  logoContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  logoIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: "#6366f1",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: "700",
-    color: "#0f172a",
-    letterSpacing: -0.5,
-  },
-  settingsButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: "#f1f5f9",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  statusRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    marginTop: 16,
-    marginBottom: 24,
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  statusActive: {
-    backgroundColor: "#10b981",
-  },
-  statusInactive: {
-    backgroundColor: "#f59e0b",
-  },
-  statusText: {
-    fontSize: 14,
-    color: "#64748b",
-    fontWeight: "500",
+    backgroundColor: COLORS.background,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: 24,
-    paddingBottom: 40,
+    padding: 20,
   },
-  imageContainer: {
-    width: "100%",
-    aspectRatio: 4 / 3,
-    borderRadius: 24,
-    overflow: "hidden",
-    backgroundColor: "#fff",
-    shadowColor: "#0f172a",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.08,
-    shadowRadius: 24,
-    elevation: 8,
-    marginBottom: 24,
+
+  // Home Header
+  homeHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 8,
   },
-  image: {
-    width: "100%",
-    height: "100%",
-    resizeMode: "cover",
+  greeting: {
+    fontSize: 16,
+    color: COLORS.textSecondary,
+    fontWeight: "500",
   },
-  placeholder: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#f1f5f9",
-  },
-  placeholderIconContainer: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    backgroundColor: "#e2e8f0",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  placeholderText: {
-    fontSize: 18,
-    color: "#334155",
-    fontWeight: "600",
-  },
-  placeholderSubtext: {
-    fontSize: 14,
-    color: "#94a3b8",
+  headerQuestion: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: COLORS.text,
     marginTop: 4,
   },
-  buttonContainer: {
+  settingsBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: COLORS.card,
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+
+  // Scan Button
+  scanButton: {
+    marginHorizontal: 20,
+    marginVertical: 20,
+    borderRadius: 24,
+    overflow: "hidden",
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  scanButtonGradient: {
+    padding: 28,
+    alignItems: "center",
+  },
+  scanIconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  scanButtonText: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#fff",
+  },
+  scanButtonSubtext: {
+    fontSize: 14,
+    color: "rgba(255,255,255,0.8)",
+    marginTop: 4,
+  },
+  scanningContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+
+  // Sections
+  section: {
+    marginBottom: 24,
+    paddingHorizontal: 20,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  sectionTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+  categoryEmoji: {
+    fontSize: 20,
+  },
+  seeAllText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.primary,
+  },
+  countBadge: {
+    backgroundColor: COLORS.primary + "15",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  countText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: COLORS.primary,
+  },
+
+  // Ingredients Scroll
+  ingredientsScroll: {
+    flexDirection: "row",
+  },
+  ingredientChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginRight: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  ingredientChipIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: COLORS.primary + "15",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 10,
+  },
+  ingredientChipContent: {
+    maxWidth: 100,
+  },
+  ingredientChipName: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.text,
+  },
+  ingredientChipQuantity: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
+  ingredientChipRemove: {
+    marginLeft: 8,
+    padding: 4,
+  },
+  moreChip: {
+    backgroundColor: COLORS.primary + "15",
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    justifyContent: "center",
+  },
+  moreChipText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.primary,
+  },
+
+  // Recipe Cards
+  recipeCard: {
+    width: SCREEN_WIDTH * 0.42,
+    backgroundColor: COLORS.card,
+    borderRadius: 20,
+    marginRight: 14,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
+    overflow: "hidden",
+  },
+  recipeCardCompact: {
+    width: SCREEN_WIDTH * 0.42,
+  },
+  recipeImageContainer: {
+    height: 120,
+    position: "relative",
+  },
+  recipeImageContainerCompact: {
+    height: 100,
+  },
+  recipeImagePlaceholder: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  recipeEmoji: {
+    fontSize: 40,
+  },
+  favoriteButton: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(0,0,0,0.3)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  categoryPill: {
+    position: "absolute",
+    bottom: 10,
+    left: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  categoryPillText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#fff",
+  },
+  recipeCardContent: {
+    padding: 14,
+  },
+  recipeCardTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: COLORS.text,
+    marginBottom: 8,
+    lineHeight: 20,
+  },
+  recipeCardMeta: {
     flexDirection: "row",
     gap: 12,
-    marginBottom: 16,
   },
-  button: {
-    flex: 1,
+  metaItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  metaText: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+  },
+
+  // Empty State
+  emptyState: {
+    alignItems: "center",
+    paddingVertical: 60,
+    paddingHorizontal: 40,
+  },
+  emptyStateIcon: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: COLORS.border,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  emptyStateTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: COLORS.text,
+    marginBottom: 8,
+  },
+  emptyStateSubtitle: {
+    fontSize: 15,
+    color: COLORS.textSecondary,
+    textAlign: "center",
+    lineHeight: 22,
+  },
+  emptyStateButton: {
+    marginTop: 24,
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: 16,
+  },
+  emptyStateButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#fff",
+  },
+
+  // Skeleton
+  skeletonRow: {
+    flexDirection: "row",
+    marginTop: 12,
+  },
+
+  // Screen Header
+  screenHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 12,
+  },
+  screenTitle: {
+    fontSize: 28,
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+  headerActions: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  headerBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: COLORS.card,
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+
+  // Ingredients Grid
+  ingredientsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+  },
+  ingredientCard: {
+    width: (SCREEN_WIDTH - 52) / 2,
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    padding: 16,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  ingredientCardIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: COLORS.primary + "15",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  ingredientCardName: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: COLORS.text,
+    textAlign: "center",
+    marginBottom: 4,
+  },
+  ingredientCardQuantity: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    textAlign: "center",
+  },
+  ingredientCardActions: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 12,
+  },
+  ingredientActionBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: COLORS.background,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  rescanButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    backgroundColor: "#1e293b",
-    paddingVertical: 16,
-    borderRadius: 16,
+    marginTop: 24,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: COLORS.primary,
+    borderStyle: "dashed",
   },
-  buttonText: {
-    color: "#fff",
+  rescanButtonText: {
     fontSize: 16,
     fontWeight: "600",
+    color: COLORS.primary,
   },
-  analyzeButton: {
+
+  // Favorites
+  countBadgeLarge: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#6366f1",
-    paddingVertical: 18,
-    borderRadius: 16,
+    gap: 6,
+    backgroundColor: COLORS.error + "15",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  countTextLarge: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: COLORS.error,
+  },
+  filterScroll: {
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+  },
+  filterChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: COLORS.card,
+    marginRight: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  filterChipActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  filterChipText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.textSecondary,
+  },
+  filterChipTextActive: {
+    color: "#fff",
+  },
+  favoritesGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 14,
+  },
+
+  // Shopping List
+  addItemRow: {
+    flexDirection: "row",
+    paddingHorizontal: 20,
+    gap: 12,
     marginBottom: 12,
   },
-  analyzeButtonDisabled: {
-    backgroundColor: "#a5b4fc",
-  },
-  analyzeContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  analyzeButtonText: {
-    color: "#fff",
-    fontSize: 17,
-    fontWeight: "700",
-  },
-  analyzingContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  analyzingText: {
-    color: "#fff",
+  addItemInput: {
+    flex: 1,
+    height: 48,
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    paddingHorizontal: 16,
     fontSize: 16,
-    fontWeight: "600",
+    color: COLORS.text,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  clearButton: {
+  addItemBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: COLORS.primary,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  shoppingItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  shoppingItemChecked: {
+    backgroundColor: COLORS.primary + "10",
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    marginRight: 14,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  checkboxChecked: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  shoppingItemText: {
+    flex: 1,
+    fontSize: 16,
+    color: COLORS.text,
+  },
+  shoppingItemTextChecked: {
+    textDecorationLine: "line-through",
+    color: COLORS.textSecondary,
+  },
+  removeItemBtn: {
+    padding: 4,
+  },
+  clearCheckedBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
+    gap: 8,
+    marginTop: 16,
     paddingVertical: 12,
   },
-  clearButtonText: {
-    color: "#ef4444",
-    fontSize: 15,
+  clearCheckedText: {
+    fontSize: 14,
     fontWeight: "500",
+    color: COLORS.error,
   },
+
+  // Modal
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.6)",
+    backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "center",
-    alignItems: "center",
     padding: 24,
   },
   modalContent: {
-    backgroundColor: "#fff",
+    backgroundColor: COLORS.card,
     borderRadius: 24,
-    padding: 28,
-    width: "100%",
-    maxWidth: 400,
+    padding: 24,
   },
   modalHeader: {
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: 20,
   },
-  modalIconContainer: {
+  modalIcon: {
     width: 56,
     height: 56,
     borderRadius: 16,
-    backgroundColor: "#eef2ff",
+    backgroundColor: COLORS.primary + "15",
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 16,
   },
   modalTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: "700",
-    color: "#0f172a",
+    color: COLORS.text,
+    textAlign: "center",
   },
   modalSubtitle: {
     fontSize: 14,
-    color: "#64748b",
-    marginBottom: 24,
-    lineHeight: 21,
+    color: COLORS.textSecondary,
     textAlign: "center",
+    marginTop: 4,
   },
-  inputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 2,
-    borderColor: "#e2e8f0",
-    borderRadius: 14,
+  apiInput: {
+    height: 52,
+    backgroundColor: COLORS.background,
+    borderRadius: 12,
     paddingHorizontal: 16,
-    backgroundColor: "#f8fafc",
-    marginBottom: 24,
-  },
-  inputIcon: {
-    marginRight: 12,
-  },
-  apiKeyInput: {
-    flex: 1,
-    paddingVertical: 16,
     fontSize: 16,
-    color: "#0f172a",
+    color: COLORS.text,
+    marginBottom: 16,
+  },
+  modalInput: {
+    height: 52,
+    backgroundColor: COLORS.background,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    fontSize: 16,
+    color: COLORS.text,
+    marginBottom: 12,
   },
   modalButtons: {
     flexDirection: "row",
     gap: 12,
+    marginTop: 8,
   },
-  modalCancelButton: {
+  modalCancelBtn: {
     flex: 1,
-    paddingVertical: 14,
+    height: 48,
     borderRadius: 12,
+    backgroundColor: COLORS.background,
+    justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#f1f5f9",
   },
   modalCancelText: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#64748b",
+    color: COLORS.textSecondary,
   },
-  modalSaveButton: {
+  modalSaveBtn: {
     flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 14,
+    height: 48,
     borderRadius: 12,
-    backgroundColor: "#6366f1",
+    backgroundColor: COLORS.primary,
+    justifyContent: "center",
+    alignItems: "center",
   },
-  modalSaveButtonDisabled: {
-    backgroundColor: "#c7d2fe",
+  modalSaveBtnDisabled: {
+    backgroundColor: COLORS.textLight,
   },
   modalSaveText: {
     fontSize: 16,
     fontWeight: "600",
     color: "#fff",
   },
-  resultHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingTop: 60,
-    paddingHorizontal: 24,
-    paddingBottom: 16,
+
+  // Recipe Detail
+  recipeDetailHeader: {
+    position: "relative",
   },
-  backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: "#f1f5f9",
+  recipeHeroPlaceholder: {
+    height: 260,
     justifyContent: "center",
     alignItems: "center",
   },
-  backButtonPlaceholder: {
-    width: 44,
+  recipeHeroEmoji: {
+    fontSize: 80,
   },
-  resultHeaderTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#0f172a",
-  },
-  resultScrollContent: {
-    paddingHorizontal: 24,
-    paddingBottom: 40,
-  },
-  miniImageContainer: {
-    width: "100%",
-    height: 160,
-    borderRadius: 20,
-    overflow: "hidden",
-    marginBottom: 24,
-  },
-  miniImage: {
-    width: "100%",
-    height: "100%",
-    resizeMode: "cover",
-  },
-  imageOverlay: {
+  recipeDetailNav: {
     position: "absolute",
-    bottom: 12,
-    left: 12,
-  },
-  imageOverlayContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  imageOverlayText: {
-    color: "#fff",
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  sectionCard: {
-    backgroundColor: "#fff",
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 20,
-    shadowColor: "#0f172a",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  sectionIconContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: "#d1fae5",
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 12,
-  },
-  sectionHeaderTitle: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: "#0f172a",
-    flex: 1,
-  },
-  countBadge: {
-    backgroundColor: "#f1f5f9",
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 20,
-  },
-  countText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#64748b",
-  },
-  productsList: {
-    gap: 10,
-  },
-  productItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    backgroundColor: "#f8fafc",
-    borderRadius: 12,
-  },
-  productIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: "#fff",
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 12,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-  },
-  productInfo: {
-    flex: 1,
-    flexDirection: "column",
-    justifyContent: "center",
-    marginRight: 8,
-  },
-  productName: {
-    fontSize: 15,
-    color: "#1e293b",
-    fontWeight: "600",
-    lineHeight: 20,
-    marginBottom: 4,
-  },
-  quantityBadge: {
-    backgroundColor: "#e0f2fe",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 10,
-    alignSelf: "flex-start",
-  },
-  productQuantity: {
-    fontSize: 13,
-    color: "#0284c7",
-    fontWeight: "500",
-  },
-  productActions: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  productEditButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: "#eef2ff",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  productDeleteButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: "#fef2f2",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  addProductButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: "#10b981",
-    justifyContent: "center",
-    alignItems: "center",
-    marginLeft: 8,
-  },
-  refreshRecipesButton: {
-    backgroundColor: "#f59e0b",
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    marginBottom: 16,
-    alignItems: "center",
-  },
-  refreshRecipesButtonDisabled: {
-    backgroundColor: "#fcd34d",
-  },
-  refreshRecipesText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  refreshingContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  refreshIconButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: "#fef3c7",
-    justifyContent: "center",
-    alignItems: "center",
-    marginLeft: 8,
-  },
-  headerButtons: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  headerButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: "#f1f5f9",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  favoriteButton: {
-    padding: 4,
-    marginLeft: 8,
-  },
-  shoppingListButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: "#f1f5f9",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  emptyState: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 60,
-  },
-  emptyStateTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#64748b",
-    marginTop: 16,
-  },
-  emptyStateText: {
-    fontSize: 14,
-    color: "#94a3b8",
-    marginTop: 4,
-  },
-  historyCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 12,
-    marginBottom: 12,
-    shadowColor: "#0f172a",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  historyImage: {
-    width: 80,
-    height: 80,
-    borderRadius: 12,
-  },
-  historyInfo: {
-    flex: 1,
-    marginLeft: 12,
-    justifyContent: "center",
-  },
-  historyDate: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#1e293b",
-  },
-  historyStats: {
-    fontSize: 13,
-    color: "#64748b",
-    marginTop: 4,
-  },
-  historyProducts: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 4,
-    marginTop: 8,
-  },
-  historyProductTag: {
-    fontSize: 11,
-    backgroundColor: "#f1f5f9",
-    color: "#64748b",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  historyMoreTag: {
-    fontSize: 11,
-    backgroundColor: "#e0e7ff",
-    color: "#6366f1",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  filterSection: {
-    marginBottom: 20,
-  },
-  filterTitle: {
-    fontSize: 15,
-    color: "#64748b",
-    marginBottom: 12,
-    fontWeight: "600",
-  },
-  filterScroll: {
-    gap: 10,
-  },
-  filterChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 24,
-    backgroundColor: "#fff",
-    borderWidth: 1.5,
-    borderColor: "#e2e8f0",
-    marginRight: 8,
-  },
-  filterChipText: {
-    fontSize: 14,
-    color: "#64748b",
-    fontWeight: "500",
-  },
-  recipesSection: {
-    marginBottom: 20,
-  },
-  recipeCard: {
-    backgroundColor: "#fff",
-    borderRadius: 20,
-    padding: 20,
-    marginTop: 12,
-    shadowColor: "#0f172a",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  recipeCardExpanded: {
-    shadowOpacity: 0.08,
-  },
-  recipeHeader: {
+    top: 50,
+    left: 0,
+    right: 0,
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
+    paddingHorizontal: 20,
   },
-  categoryBadge: {
+  navBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(0,0,0,0.3)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  recipeDetailTitleContainer: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: COLORS.background,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingTop: 20,
+  },
+  categoryPillLarge: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+    alignSelf: "flex-start",
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 20,
+    borderRadius: 12,
+    marginBottom: 12,
   },
-  categoryText: {
-    fontSize: 12,
+  categoryPillTextLarge: {
+    fontSize: 13,
     fontWeight: "600",
+    color: "#fff",
   },
-  recipeMetaRow: {
+  recipeDetailTitle: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: COLORS.text,
+    marginBottom: 12,
+    lineHeight: 30,
+  },
+  recipeDetailMeta: {
     flexDirection: "row",
-    gap: 8,
+    gap: 20,
   },
-  metaBadge: {
+  metaItemLarge: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    backgroundColor: "#f1f5f9",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
+    gap: 6,
   },
-  metaText: {
-    fontSize: 12,
-    color: "#64748b",
+  metaTextLarge: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
     fontWeight: "500",
   },
-  recipeName: {
+  recipeDetailScroll: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  recipeSection: {
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+  },
+  recipeSectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 16,
+  },
+  recipeSectionTitle: {
     fontSize: 18,
     fontWeight: "700",
-    color: "#0f172a",
-    marginBottom: 6,
+    color: COLORS.text,
   },
   recipeDescription: {
-    fontSize: 14,
-    color: "#64748b",
-    lineHeight: 21,
-  },
-  expandRow: {
-    alignItems: "center",
-    marginTop: 12,
-  },
-  recipeDetails: {
-    marginTop: 20,
-    paddingTop: 20,
-    borderTopWidth: 1,
-    borderTopColor: "#f1f5f9",
-  },
-  ingredientsSection: {
-    marginBottom: 20,
-  },
-  detailHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 12,
-  },
-  detailTitle: {
     fontSize: 15,
-    fontWeight: "600",
-    color: "#334155",
+    color: COLORS.textSecondary,
+    lineHeight: 24,
   },
-  ingredientTags: {
+  ingredientRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
+    alignItems: "center",
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
   },
-  ingredientTag: {
-    backgroundColor: "#d1fae5",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
+  ingredientCheckbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    marginRight: 14,
+    justifyContent: "center",
+    alignItems: "center",
   },
-  ingredientTagText: {
-    fontSize: 13,
-    color: "#047857",
-    fontWeight: "500",
+  ingredientCheckboxChecked: {
+    backgroundColor: COLORS.success,
+    borderColor: COLORS.success,
   },
-  additionalTag: {
-    backgroundColor: "#fef3c7",
+  ingredientRowText: {
+    fontSize: 15,
+    color: COLORS.text,
   },
-  additionalTagText: {
-    fontSize: 13,
-    color: "#b45309",
-    fontWeight: "500",
+  ingredientRowTextChecked: {
+    textDecorationLine: "line-through",
+    color: COLORS.textSecondary,
   },
-  stepsSection: {
-    marginTop: 4,
+  missingIngredientRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 10,
+  },
+  missingIngredientText: {
+    fontSize: 15,
+    color: COLORS.text,
+  },
+  addToListBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    backgroundColor: COLORS.warning,
+    paddingVertical: 14,
+    borderRadius: 12,
+    marginTop: 16,
+  },
+  addToListBtnText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#fff",
   },
   stepRow: {
     flexDirection: "row",
-    marginBottom: 14,
+    marginBottom: 16,
   },
   stepNumber: {
     width: 28,
     height: 28,
-    borderRadius: 8,
-    backgroundColor: "#6366f1",
+    borderRadius: 14,
+    backgroundColor: COLORS.primary,
     justifyContent: "center",
     alignItems: "center",
     marginRight: 14,
   },
   stepNumberText: {
-    color: "#fff",
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "700",
+    color: "#fff",
   },
   stepText: {
     flex: 1,
-    fontSize: 14,
-    color: "#334155",
+    fontSize: 15,
+    color: COLORS.text,
     lineHeight: 22,
   },
-  rawResultBox: {
-    backgroundColor: "#fff",
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 20,
-  },
-  rawResultHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginBottom: 16,
-  },
-  rawResultTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#334155",
-  },
-  rawResultText: {
-    fontSize: 14,
-    color: "#64748b",
-    lineHeight: 22,
-  },
-  newPhotoButton: {
+  saveRecipeBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 10,
-    backgroundColor: "#1e293b",
+    backgroundColor: COLORS.primary,
+    marginHorizontal: 24,
     paddingVertical: 16,
     borderRadius: 16,
     marginTop: 8,
   },
-  newPhotoButtonText: {
-    color: "#fff",
+  saveRecipeBtnText: {
     fontSize: 16,
+    fontWeight: "600",
+    color: "#fff",
+  },
+
+  // Tab Bar
+  tabBar: {
+    position: "absolute",
+    backgroundColor: COLORS.card,
+    borderTopWidth: 0,
+    height: 80,
+    paddingBottom: 20,
+    paddingTop: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  tabBarLabel: {
+    fontSize: 11,
     fontWeight: "600",
   },
 });
