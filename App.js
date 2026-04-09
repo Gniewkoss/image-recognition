@@ -29,6 +29,51 @@ import { LinearGradient } from "expo-linear-gradient";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
+// Design System - Spacing (8pt grid)
+const SPACING = {
+  xs: 4,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 24,
+  xxl: 32,
+};
+
+// Design System - Border Radius
+const RADIUS = {
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 20,
+  xxl: 24,
+  full: 9999,
+};
+
+// Design System - Shadows
+const SHADOWS = {
+  sm: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  md: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  lg: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+};
+
 const API_KEY_STORAGE = "@openai_api_key";
 const FAVORITES_STORAGE = "@favorite_recipes";
 const HISTORY_STORAGE = "@scan_history";
@@ -1056,7 +1101,7 @@ function IngredientsTab({ navigation }) {
         </View>
       </View>
 
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContentPadded}>
         {ingredients.length === 0 ? (
           <EmptyState
             icon="nutrition-outline"
@@ -1209,7 +1254,7 @@ function FavoritesTab({ navigation }) {
         </View>
       </View>
 
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContentPadded}>
         {favorites.length === 0 ? (
           <EmptyState
             icon="heart-outline"
@@ -1336,7 +1381,7 @@ function ShoppingListTab({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContentPadded}>
         {shoppingList.length === 0 ? (
           <EmptyState
             icon="cart-outline"
@@ -1666,6 +1711,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
+    paddingTop: SPACING.sm,
+    paddingBottom: 100,
+  },
+  scrollContentPadded: {
+    padding: SPACING.xl,
     paddingBottom: 100,
   },
 
@@ -1674,9 +1724,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 24,
-    paddingTop: 8,
-    paddingBottom: 16,
+    paddingHorizontal: SPACING.xl,
+    paddingTop: SPACING.sm,
+    paddingBottom: SPACING.lg,
   },
   headerLeft: {
     flex: 1,
@@ -1713,22 +1763,22 @@ const styles = StyleSheet.create({
 
   // Main Scan Section
   scanSection: {
-    paddingHorizontal: 24,
-    marginBottom: 24,
+    paddingHorizontal: SPACING.xl,
+    marginBottom: SPACING.xl,
   },
   mainScanCard: {
-    borderRadius: 24,
+    borderRadius: RADIUS.xxl,
     overflow: "hidden",
     shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 8,
   },
   scanGradient: {
-    paddingVertical: 32,
-    paddingHorizontal: 24,
-    minHeight: 160,
+    paddingVertical: SPACING.xxl,
+    paddingHorizontal: SPACING.xl,
+    minHeight: 150,
     position: "relative",
   },
   scanContent: {
@@ -1778,33 +1828,30 @@ const styles = StyleSheet.create({
   // Quick Actions Row
   quickActionsRow: {
     flexDirection: "row",
-    paddingHorizontal: 24,
-    marginBottom: 24,
-    gap: 12,
+    paddingHorizontal: SPACING.xl,
+    marginBottom: SPACING.xl,
+    gap: SPACING.sm,
   },
   quickActionBtn: {
     flex: 1,
     alignItems: "center",
-    padding: 12,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.sm,
     backgroundColor: COLORS.card,
-    borderRadius: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
+    borderRadius: RADIUS.lg,
+    ...SHADOWS.sm,
   },
   quickActionIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
+    width: 40,
+    height: 40,
+    borderRadius: RADIUS.md,
     backgroundColor: COLORS.primary + '10',
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 8,
+    marginBottom: SPACING.sm,
   },
   quickActionLabel: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "600",
     color: COLORS.textSecondary,
   },
@@ -1812,69 +1859,66 @@ const styles = StyleSheet.create({
   // Stats Cards
   statsCards: {
     flexDirection: "row",
-    paddingHorizontal: 24,
-    marginBottom: 28,
-    gap: 12,
+    paddingHorizontal: SPACING.xl,
+    marginBottom: SPACING.xl,
+    gap: SPACING.sm,
   },
   statCard: {
     flex: 1,
     backgroundColor: COLORS.card,
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: RADIUS.lg,
+    paddingVertical: SPACING.lg,
+    paddingHorizontal: SPACING.md,
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
+    ...SHADOWS.sm,
   },
   statCardIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
+    width: 40,
+    height: 40,
+    borderRadius: RADIUS.md,
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 10,
+    marginBottom: SPACING.sm,
   },
   statCardNumber: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: "800",
     color: COLORS.text,
   },
   statCardLabel: {
     fontSize: 11,
     color: COLORS.textSecondary,
-    marginTop: 2,
+    marginTop: SPACING.xs,
     fontWeight: "500",
   },
 
   // Sections
   // Section Container
   sectionContainer: {
-    marginBottom: 28,
+    marginBottom: SPACING.xl,
   },
   sectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 24,
-    marginBottom: 16,
+    paddingHorizontal: SPACING.xl,
+    marginBottom: SPACING.md,
   },
   sectionTitleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: SPACING.sm,
   },
   sectionIcon: {
     width: 28,
     height: 28,
-    borderRadius: 8,
+    borderRadius: RADIUS.sm,
     backgroundColor: COLORS.primary + '12',
     justifyContent: "center",
     alignItems: "center",
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: "700",
     color: COLORS.text,
     letterSpacing: -0.3,
@@ -1882,11 +1926,11 @@ const styles = StyleSheet.create({
   viewAllBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    gap: SPACING.xs,
+    paddingVertical: SPACING.xs + 2,
+    paddingHorizontal: SPACING.md,
     backgroundColor: COLORS.primary + '08',
-    borderRadius: 20,
+    borderRadius: RADIUS.full,
   },
   viewAllText: {
     fontSize: 13,
@@ -1894,34 +1938,31 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
   },
   countBadge: {
-    backgroundColor: COLORS.primary + "15",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+    backgroundColor: COLORS.primary + "12",
+    paddingHorizontal: SPACING.sm + 2,
+    paddingVertical: SPACING.xs,
+    borderRadius: RADIUS.sm,
   },
   countText: {
-    fontSize: 13,
-    fontWeight: "600",
+    fontSize: 12,
+    fontWeight: "700",
     color: COLORS.primary,
   },
 
   // Ingredients Scroll
   ingredientsScrollContent: {
-    paddingHorizontal: 24,
-    gap: 10,
+    paddingLeft: SPACING.xl,
+    paddingRight: SPACING.xl,
   },
   ingredientChip: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: COLORS.card,
-    borderRadius: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
+    borderRadius: RADIUS.lg,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    marginRight: SPACING.sm,
+    ...SHADOWS.sm,
   },
   ingredientChipIcon: {
     width: 36,
@@ -1959,63 +2000,59 @@ const styles = StyleSheet.create({
   },
   moreChip: {
     backgroundColor: COLORS.primary + "12",
-    borderRadius: 16,
-    paddingHorizontal: 18,
-    paddingVertical: 12,
+    borderRadius: RADIUS.lg,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
     justifyContent: "center",
     alignItems: "center",
   },
   moreChipText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "700",
     color: COLORS.primary,
   },
 
   // Category Filters
   filterSection: {
-    marginBottom: 24,
+    marginBottom: SPACING.xl,
   },
   filterScrollContent: {
-    paddingHorizontal: 24,
-    gap: 10,
+    paddingLeft: SPACING.xl,
+    paddingRight: SPACING.xl,
   },
   filterBadge: {
     backgroundColor: COLORS.primary + '15',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: SPACING.sm + 2,
+    paddingVertical: SPACING.xs,
+    borderRadius: RADIUS.sm,
   },
   filterBadgeText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "700",
     color: COLORS.primary,
   },
   categoryChip: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: SPACING.sm,
     backgroundColor: COLORS.card,
-    borderRadius: 20,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
+    borderRadius: RADIUS.xl,
+    paddingVertical: SPACING.sm + 2,
+    paddingHorizontal: SPACING.md,
+    marginRight: SPACING.sm,
+    ...SHADOWS.sm,
   },
   categoryChipSelected: {
     backgroundColor: COLORS.primary,
     shadowColor: COLORS.primary,
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
     elevation: 4,
-    transform: [{ scale: 1.02 }],
   },
   categoryChipIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
+    width: 30,
+    height: 30,
+    borderRadius: RADIUS.sm,
     backgroundColor: COLORS.background,
     justifyContent: "center",
     alignItems: "center",
@@ -2024,7 +2061,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.2)",
   },
   categoryChipText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "600",
     color: COLORS.text,
   },
@@ -2034,58 +2071,58 @@ const styles = StyleSheet.create({
 
   // Recipe Section
   recipeSection: {
-    marginBottom: 28,
+    marginBottom: SPACING.xl,
   },
   recipeSectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 24,
-    marginBottom: 16,
+    paddingHorizontal: SPACING.xl,
+    marginBottom: SPACING.md,
   },
   recipeSectionTitleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: SPACING.sm,
   },
   recipeSectionIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
+    width: 30,
+    height: 30,
+    borderRadius: RADIUS.sm,
     justifyContent: "center",
     alignItems: "center",
   },
   recipeSectionTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: "700",
     color: COLORS.text,
     letterSpacing: -0.3,
   },
   recipeSectionBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 10,
+    paddingHorizontal: SPACING.sm + 2,
+    paddingVertical: SPACING.xs,
+    borderRadius: RADIUS.sm,
   },
   recipeSectionCount: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "700",
   },
   recipeScrollContent: {
-    paddingHorizontal: 24,
-    gap: 14,
+    paddingLeft: SPACING.xl,
+    paddingRight: SPACING.xl,
   },
   noResultsContainer: {
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 40,
-    paddingHorizontal: 24,
+    paddingVertical: SPACING.xxl,
+    paddingHorizontal: SPACING.xl,
   },
   noResultsTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: "600",
     color: COLORS.text,
-    marginTop: 16,
-    marginBottom: 8,
+    marginTop: SPACING.lg,
+    marginBottom: SPACING.sm,
   },
   noResultsSubtitle: {
     fontSize: 14,
@@ -2094,11 +2131,11 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   clearFiltersLargeBtn: {
-    marginTop: 20,
+    marginTop: SPACING.lg,
     backgroundColor: COLORS.primary,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 12,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.xl,
+    borderRadius: RADIUS.md,
   },
   clearFiltersLargeText: {
     fontSize: 15,
@@ -2108,28 +2145,26 @@ const styles = StyleSheet.create({
 
   // Recipe Cards
   recipeCard: {
-    width: SCREEN_WIDTH * 0.46,
+    width: SCREEN_WIDTH * 0.44,
     backgroundColor: COLORS.card,
-    borderRadius: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 6,
+    borderRadius: RADIUS.xl,
+    marginRight: SPACING.md,
     overflow: "hidden",
+    ...SHADOWS.md,
   },
   recipeCardCompact: {
-    width: SCREEN_WIDTH * 0.46,
+    width: SCREEN_WIDTH * 0.44,
   },
   recipeCardGrid: {
     width: "100%",
+    marginRight: 0,
   },
   recipeImageContainer: {
-    height: 145,
+    height: 130,
     position: "relative",
   },
   recipeImageContainerCompact: {
-    height: 120,
+    height: 115,
   },
   recipeImage: {
     width: "100%",
@@ -2242,62 +2277,58 @@ const styles = StyleSheet.create({
   // Empty State
   emptyState: {
     alignItems: "center",
-    paddingVertical: 50,
-    paddingHorizontal: 32,
+    paddingVertical: SPACING.xxl,
+    paddingHorizontal: SPACING.xl,
   },
   emptyStateIcon: {
-    width: 90,
-    height: 90,
-    borderRadius: 24,
+    width: 80,
+    height: 80,
+    borderRadius: RADIUS.xl,
     backgroundColor: COLORS.primary + '10',
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 20,
+    marginBottom: SPACING.lg,
   },
   emptyStateTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: "700",
     color: COLORS.text,
-    marginBottom: 8,
+    marginBottom: SPACING.sm,
   },
   emptyStateSubtitle: {
-    fontSize: 15,
+    fontSize: 14,
     color: COLORS.textSecondary,
     textAlign: "center",
-    lineHeight: 22,
+    lineHeight: 21,
   },
   emptyStateButton: {
-    marginTop: 24,
+    marginTop: SPACING.xl,
     backgroundColor: COLORS.primary,
-    paddingHorizontal: 28,
-    paddingVertical: 14,
-    borderRadius: 14,
-    shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.md,
+    ...SHADOWS.md,
   },
   emptyStateButtonText: {
     fontSize: 15,
-    fontWeight: "700",
+    fontWeight: "600",
     color: "#fff",
   },
 
   // Skeleton
   skeletonRow: {
     flexDirection: "row",
-    paddingHorizontal: 24,
-    gap: 14,
+    paddingHorizontal: SPACING.xl,
   },
   skeletonCard: {
-    borderRadius: 20,
+    borderRadius: RADIUS.xl,
+    marginRight: SPACING.md,
   },
   
   // Empty State Container
   emptyStateContainer: {
-    paddingHorizontal: 24,
-    paddingTop: 20,
+    paddingHorizontal: SPACING.xl,
+    paddingTop: SPACING.lg,
   },
 
   // Screen Header
@@ -2305,12 +2336,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 16,
+    paddingHorizontal: SPACING.xl,
+    paddingTop: SPACING.sm,
+    paddingBottom: SPACING.lg,
   },
   screenTitle: {
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: "800",
     color: COLORS.text,
     letterSpacing: -0.5,
@@ -2340,30 +2371,24 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   ingredientCard: {
-    width: (SCREEN_WIDTH - 52) / 2,
+    width: (SCREEN_WIDTH - SPACING.xl * 2 - SPACING.md) / 2,
     backgroundColor: COLORS.card,
-    borderRadius: 18,
-    padding: 16,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.lg,
     alignItems: "center",
-    marginBottom: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    elevation: 3,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    marginBottom: SPACING.md,
+    ...SHADOWS.sm,
   },
   ingredientCardIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
+    width: 52,
+    height: 52,
+    borderRadius: RADIUS.md,
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: SPACING.md,
   },
   ingredientCardName: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "700",
     color: COLORS.text,
     textAlign: "center",
@@ -2372,26 +2397,26 @@ const styles = StyleSheet.create({
   },
   ingredientQuantityBadge: {
     backgroundColor: COLORS.primary + '12',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-    marginTop: 6,
+    paddingHorizontal: SPACING.sm + 2,
+    paddingVertical: SPACING.xs,
+    borderRadius: RADIUS.sm,
+    marginTop: SPACING.sm,
   },
   ingredientCardQuantity: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "600",
     color: COLORS.primary,
     textAlign: "center",
   },
   ingredientCardActions: {
     flexDirection: "row",
-    gap: 16,
-    marginTop: 14,
+    gap: SPACING.md,
+    marginTop: SPACING.md,
   },
   ingredientActionBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+    width: 34,
+    height: 34,
+    borderRadius: RADIUS.sm,
     backgroundColor: COLORS.primary + '10',
     justifyContent: "center",
     alignItems: "center",
@@ -2421,15 +2446,15 @@ const styles = StyleSheet.create({
   countBadgeLarge: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    backgroundColor: COLORS.error + "15",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
+    gap: SPACING.sm,
+    backgroundColor: COLORS.error + "12",
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.md,
   },
   countTextLarge: {
-    fontSize: 15,
-    fontWeight: "600",
+    fontSize: 14,
+    fontWeight: "700",
     color: COLORS.error,
   },
   favoritesGrid: {
@@ -2438,8 +2463,8 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   favoritesGridItem: {
-    width: (SCREEN_WIDTH - 40 - 14) / 2,
-    marginBottom: 14,
+    width: (SCREEN_WIDTH - SPACING.xl * 2 - SPACING.md) / 2,
+    marginBottom: SPACING.md,
   },
 
   // Shopping List
@@ -2475,25 +2500,18 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: COLORS.card,
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    borderRadius: RADIUS.md,
+    padding: SPACING.lg,
+    marginBottom: SPACING.sm,
+    ...SHADOWS.sm,
   },
   shoppingItemChecked: {
     backgroundColor: COLORS.success + "08",
-    borderColor: COLORS.success + "30",
   },
   checkbox: {
-    width: 26,
-    height: 26,
-    borderRadius: 8,
+    width: 24,
+    height: 24,
+    borderRadius: RADIUS.sm,
     borderWidth: 2,
     borderColor: COLORS.border,
     marginRight: 14,
@@ -2539,30 +2557,26 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: COLORS.card,
-    borderRadius: 28,
-    padding: 28,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.15,
-    shadowRadius: 30,
-    elevation: 15,
+    borderRadius: RADIUS.xxl,
+    padding: SPACING.xl,
+    ...SHADOWS.lg,
   },
   modalHeader: {
     alignItems: "center",
-    marginBottom: 24,
+    marginBottom: SPACING.xl,
   },
   modalIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 20,
+    width: 56,
+    height: 56,
+    borderRadius: RADIUS.lg,
     backgroundColor: COLORS.primary + "12",
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: SPACING.lg,
   },
   modalTitle: {
-    fontSize: 22,
-    fontWeight: "800",
+    fontSize: 20,
+    fontWeight: "700",
     color: COLORS.text,
     textAlign: "center",
     letterSpacing: -0.3,
@@ -2571,24 +2585,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.textSecondary,
     textAlign: "center",
-    marginTop: 6,
+    marginTop: SPACING.sm,
     lineHeight: 20,
   },
   apiInput: {
-    height: 52,
+    height: 48,
     backgroundColor: COLORS.background,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    fontSize: 16,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.lg,
+    fontSize: 15,
     color: COLORS.text,
-    marginBottom: 16,
+    marginBottom: SPACING.lg,
   },
   modalInput: {
-    height: 52,
+    height: 48,
     backgroundColor: COLORS.background,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    fontSize: 16,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.lg,
+    fontSize: 15,
     color: COLORS.text,
     marginBottom: 12,
   },
@@ -2612,16 +2626,12 @@ const styles = StyleSheet.create({
   },
   modalSaveBtn: {
     flex: 1,
-    height: 50,
-    borderRadius: 14,
+    height: 48,
+    borderRadius: RADIUS.md,
     backgroundColor: COLORS.primary,
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
+    ...SHADOWS.md,
   },
   modalSaveBtnDisabled: {
     backgroundColor: COLORS.textLight,
@@ -2630,7 +2640,7 @@ const styles = StyleSheet.create({
   },
   modalSaveText: {
     fontSize: 15,
-    fontWeight: "700",
+    fontWeight: "600",
     color: "#fff",
   },
 
@@ -2863,26 +2873,26 @@ const styles = StyleSheet.create({
     position: "absolute",
     backgroundColor: COLORS.glass,
     borderTopWidth: 0,
-    height: 88,
-    paddingBottom: 28,
-    paddingTop: 12,
+    height: 84,
+    paddingBottom: SPACING.xl,
+    paddingTop: SPACING.sm,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: -8 },
-    shadowOpacity: 0.08,
-    shadowRadius: 24,
-    elevation: 15,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
+    elevation: 10,
+    borderTopLeftRadius: RADIUS.xxl,
+    borderTopRightRadius: RADIUS.xxl,
   },
   tabBarLabel: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "600",
-    marginTop: 4,
+    marginTop: SPACING.xs,
   },
   tabIconContainer: {
-    width: 48,
-    height: 32,
-    borderRadius: 16,
+    width: 44,
+    height: 30,
+    borderRadius: RADIUS.md,
     justifyContent: "center",
     alignItems: "center",
   },
