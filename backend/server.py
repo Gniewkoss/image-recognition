@@ -6,6 +6,8 @@ import re
 import requests
 import os
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from urllib.parse import urljoin, urlparse
 
 app = Flask(__name__)
 CORS(app)
@@ -185,6 +187,113 @@ def fetch_meal_details(meal_id):
         return None
 
 
+# Browser-like UA so recipe sites return full HTML with og:image
+SOURCE_PAGE_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
+
+def extract_og_image_url(html, base_url):
+    """
+    Parse Open Graph / Twitter image from HTML (original recipe site preview image).
+    """
+    if not html or not base_url:
+        return None
+    patterns = [
+        r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']',
+        r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']',
+        r'<meta[^>]+property=["\']og:image:url["\'][^>]+content=["\']([^"\']+)["\']',
+        r'<meta[^>]+name=["\']twitter:image["\'][^>]+content=["\']([^"\']+)["\']',
+        r'<meta[^>]+name=["\']twitter:image:src["\'][^>]+content=["\']([^"\']+)["\']',
+        r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+name=["\']twitter:image["\']',
+    ]
+    for pattern in patterns:
+        m = re.search(pattern, html, re.IGNORECASE | re.DOTALL)
+        if not m:
+            continue
+        raw = m.group(1).strip()
+        if not raw or raw.lower().startswith("data:"):
+            continue
+        if raw.startswith("//"):
+            raw = "https:" + raw
+        if raw.startswith("http://") or raw.startswith("https://"):
+            parsed = urlparse(raw)
+            path = (parsed.path or "").lower()
+            # Skip obvious non-photo assets
+            if path.endswith((".svg", ".ico")):
+                continue
+            return raw
+        return urljoin(base_url, raw)
+    return None
+
+
+def fetch_original_recipe_image(source_url, timeout=5):
+    """
+    Fetch the recipe's source page and return og:image URL if found.
+    Falls back to None so caller can keep TheMealDB thumbnail.
+    """
+    if not source_url or not isinstance(source_url, str):
+        return None
+    source_url = source_url.strip()
+    if not source_url.startswith(("http://", "https://")):
+        return None
+    try:
+        r = requests.get(
+            source_url,
+            timeout=timeout,
+            headers=SOURCE_PAGE_HEADERS,
+            allow_redirects=True,
+        )
+        r.raise_for_status()
+        ctype = (r.headers.get("Content-Type") or "").lower()
+        if "html" not in ctype and "xml" not in ctype:
+            return None
+        html = r.text[:800000]
+        found = extract_og_image_url(html, r.url)
+        return found
+    except Exception as e:
+        print(f"Could not load source image from {source_url}: {e}")
+        return None
+
+
+def enrich_recipes_with_source_images(recipes, max_workers=6):
+    """Replace image with og:image from recipe source site when available (parallel)."""
+    tasks = []
+    for i, r in enumerate(recipes):
+        sid = r.get("id")
+        if sid is None or (isinstance(sid, str) and sid.startswith("simple_")):
+            continue
+        src = r.get("source")
+        if not src:
+            continue
+        tasks.append((i, src))
+
+    if not tasks:
+        return recipes
+
+    def fetch_one(item):
+        idx, url = item
+        img = fetch_original_recipe_image(url)
+        return idx, img
+
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = [pool.submit(fetch_one, t) for t in tasks]
+        for fut in as_completed(futures):
+            try:
+                idx, img_url = fut.result()
+                if img_url:
+                    recipes[idx]["image"] = img_url
+            except Exception as e:
+                print(f"Source image worker error: {e}")
+
+    return recipes
+
+
 def get_simple_recipes_matches(user_ingredients):
     """Get matching simple recipes from built-in database."""
     results = []
@@ -314,6 +423,9 @@ def search_recipes():
         
         all_recipes.sort(key=lambda x: (x['missing_count'], -x['match_percent']))
         
+        # Prefer hero images from the original recipe site (Open Graph) when strSource exists
+        enrich_recipes_with_source_images(all_recipes)
+        
         categorized = {
             'Quick & Easy': [],
             'Best Matches': [],
@@ -359,13 +471,16 @@ def get_recipe(meal_id):
         if not meal:
             return jsonify({'error': 'Recipe not found'}), 404
         
+        thumb = meal.get('strMealThumb', '')
+        source = meal.get('strSource', '')
+        og_image = fetch_original_recipe_image(source) if source else None
         recipe = {
             'id': meal['idMeal'],
             'name': meal['strMeal'],
             'category': meal.get('strCategory', 'Main'),
             'area': meal.get('strArea', ''),
-            'image': meal.get('strMealThumb', ''),
-            'source': meal.get('strSource', ''),
+            'image': og_image or thumb,
+            'source': source,
             'youtube': meal.get('strYoutube', ''),
             'ingredients': extract_meal_ingredients(meal),
             'steps': extract_meal_steps(meal),
