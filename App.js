@@ -230,6 +230,17 @@ const IngredientChip = ({ ingredient, onRemove, editable }) => (
   </View>
 );
 
+const RECIPE_CATEGORIES = [
+  { id: 'all', label: 'All', icon: 'apps-outline' },
+  { id: 'Breakfast', label: 'Breakfast', icon: 'sunny-outline', emoji: '🌅' },
+  { id: 'Lunch', label: 'Lunch', icon: 'restaurant-outline', emoji: '🥗' },
+  { id: 'Dinner', label: 'Dinner', icon: 'moon-outline', emoji: '🍽️' },
+  { id: 'Snack', label: 'Snack', icon: 'cafe-outline', emoji: '🍿' },
+  { id: 'Salad', label: 'Salad', icon: 'leaf-outline', emoji: '🥬' },
+  { id: 'Dessert', label: 'Dessert', icon: 'ice-cream-outline', emoji: '🍰' },
+  { id: 'Drink', label: 'Drink', icon: 'wine-outline', emoji: '🥤' },
+];
+
 function HomeTab({ navigation }) {
   const [ingredients, setIngredients] = useState([]);
   const [recipes, setRecipes] = useState([]);
@@ -240,6 +251,7 @@ function HomeTab({ navigation }) {
   const [apiKey, setApiKey] = useState("");
   const [showApiModal, setShowApiModal] = useState(false);
   const [tempApiKey, setTempApiKey] = useState("");
+  const [selectedCategories, setSelectedCategories] = useState(['all']);
 
   useEffect(() => {
     loadData();
@@ -417,6 +429,47 @@ function HomeTab({ navigation }) {
 
   const isFavorited = (recipe) => favorites.some((f) => f.id === recipe.id);
 
+  const toggleCategory = (categoryId) => {
+    if (categoryId === 'all') {
+      setSelectedCategories(['all']);
+    } else {
+      setSelectedCategories(prev => {
+        const withoutAll = prev.filter(c => c !== 'all');
+        if (withoutAll.includes(categoryId)) {
+          const newSelection = withoutAll.filter(c => c !== categoryId);
+          return newSelection.length === 0 ? ['all'] : newSelection;
+        } else {
+          return [...withoutAll, categoryId];
+        }
+      });
+    }
+  };
+
+  const isAllSelected = selectedCategories.includes('all');
+  
+  const filterRecipesByCategory = (recipesList) => {
+    if (isAllSelected) return recipesList;
+    return recipesList.filter(recipe => 
+      selectedCategories.includes(recipe.category)
+    );
+  };
+
+  const getFilteredCategorizedRecipes = () => {
+    if (isAllSelected) return categorizedRecipes;
+    
+    const filtered = {};
+    Object.entries(categorizedRecipes).forEach(([key, recipesList]) => {
+      const filteredList = filterRecipesByCategory(recipesList);
+      if (filteredList.length > 0) {
+        filtered[key] = filteredList;
+      }
+    });
+    return filtered;
+  };
+
+  const filteredCategorizedRecipes = getFilteredCategorizedRecipes();
+  const totalFilteredRecipes = Object.values(filteredCategorizedRecipes).flat().length;
+
   const greeting = () => {
     const hour = new Date().getHours();
     if (hour < 12) return "Good morning";
@@ -529,9 +582,56 @@ function HomeTab({ navigation }) {
           />
         )}
 
-        {!scanning && !searchingRecipes && Object.entries(categorizedRecipes).map(([category, categoryRecipes]) => {
+        {!scanning && !searchingRecipes && recipes.length > 0 && (
+          <View style={styles.filterSection}>
+            <View style={styles.filterHeader}>
+              <Ionicons name="filter-outline" size={18} color={COLORS.textSecondary} />
+              <Text style={styles.filterTitle}>Filter by Category</Text>
+              {!isAllSelected && (
+                <Text style={styles.filterCount}>({totalFilteredRecipes} recipes)</Text>
+              )}
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
+              {RECIPE_CATEGORIES.map((cat) => {
+                const isSelected = cat.id === 'all' ? isAllSelected : selectedCategories.includes(cat.id);
+                return (
+                  <TouchableOpacity
+                    key={cat.id}
+                    style={[styles.filterChip, isSelected && styles.filterChipSelected]}
+                    onPress={() => toggleCategory(cat.id)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons 
+                      name={cat.icon} 
+                      size={16} 
+                      color={isSelected ? '#fff' : COLORS.textSecondary} 
+                    />
+                    <Text style={[styles.filterChipText, isSelected && styles.filterChipTextSelected]}>
+                      {cat.label}
+                    </Text>
+                    {isSelected && cat.id !== 'all' && (
+                      <View style={styles.filterChipCheck}>
+                        <Ionicons name="checkmark" size={12} color="#fff" />
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            {!isAllSelected && selectedCategories.length > 0 && (
+              <TouchableOpacity 
+                style={styles.clearFiltersBtn}
+                onPress={() => setSelectedCategories(['all'])}
+              >
+                <Text style={styles.clearFiltersText}>Clear filters</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
+        {!scanning && !searchingRecipes && Object.entries(filteredCategorizedRecipes).map(([category, categoryRecipes]) => {
           if (!categoryRecipes || categoryRecipes.length === 0) return null;
-          
+
           const getCategoryIcon = (cat) => {
             switch(cat) {
               case 'Quick & Easy': return { icon: 'flash', color: COLORS.warning };
@@ -541,7 +641,7 @@ function HomeTab({ navigation }) {
             }
           };
           const { icon, color } = getCategoryIcon(category);
-          
+
           return (
             <View key={category} style={styles.section}>
               <View style={styles.sectionHeader}>
@@ -568,6 +668,22 @@ function HomeTab({ navigation }) {
             </View>
           );
         })}
+
+        {!scanning && !searchingRecipes && recipes.length > 0 && totalFilteredRecipes === 0 && !isAllSelected && (
+          <View style={styles.noResultsContainer}>
+            <Ionicons name="search-outline" size={48} color={COLORS.textSecondary} />
+            <Text style={styles.noResultsTitle}>No recipes found</Text>
+            <Text style={styles.noResultsSubtitle}>
+              No recipes match the selected categories.{'\n'}Try selecting different filters.
+            </Text>
+            <TouchableOpacity 
+              style={styles.clearFiltersLargeBtn}
+              onPress={() => setSelectedCategories(['all'])}
+            >
+              <Text style={styles.clearFiltersLargeText}>Show All Recipes</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         <View style={{ height: 100 }} />
       </ScrollView>
@@ -1470,6 +1586,105 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "500",
     color: COLORS.primary,
+  },
+
+  // Category Filters
+  filterSection: {
+    marginBottom: 16,
+  },
+  filterHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
+  },
+  filterTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: COLORS.text,
+  },
+  filterCount: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+  },
+  filterScroll: {
+    flexDirection: "row",
+  },
+  filterChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: COLORS.card,
+    borderRadius: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    marginRight: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  filterChipSelected: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  filterChipText: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: COLORS.textSecondary,
+  },
+  filterChipTextSelected: {
+    color: "#fff",
+  },
+  filterChipCheck: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.3)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginLeft: 2,
+  },
+  clearFiltersBtn: {
+    alignSelf: "flex-start",
+    marginTop: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  clearFiltersText: {
+    fontSize: 13,
+    fontWeight: "500",
+    color: COLORS.primary,
+    textDecorationLine: "underline",
+  },
+  noResultsContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 40,
+    paddingHorizontal: 24,
+  },
+  noResultsTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: COLORS.text,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  noResultsSubtitle: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  clearFiltersLargeBtn: {
+    marginTop: 20,
+    backgroundColor: COLORS.primary,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+  },
+  clearFiltersLargeText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#fff",
   },
 
   // Recipe Cards
