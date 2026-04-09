@@ -41,22 +41,24 @@ const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
 const COLORS = {
-  primary: "#4CAF50",
-  primaryLight: "#81C784",
-  primaryDark: "#388E3C",
-  secondary: "#FFF8E7",
-  background: "#FAFAF5",
+  primary: "#2E7D32",
+  primaryLight: "#66BB6A",
+  primaryDark: "#1B5E20",
+  secondary: "#FAFAFA",
+  background: "#F8F9FA",
   card: "#FFFFFF",
-  accent: "#FF9800",
-  accentLight: "#FFB74D",
-  text: "#2D3436",
-  textSecondary: "#636E72",
-  textLight: "#B2BEC3",
-  border: "#E8E8E0",
-  success: "#4CAF50",
-  warning: "#FF9800",
-  error: "#EF5350",
-  gradient: ["#4CAF50", "#81C784"],
+  accent: "#FF8A65",
+  accentLight: "#FFAB91",
+  text: "#1A1A2E",
+  textSecondary: "#6B7280",
+  textLight: "#9CA3AF",
+  border: "#E5E7EB",
+  success: "#10B981",
+  warning: "#F59E0B",
+  error: "#EF4444",
+  gradient: ["#2E7D32", "#4CAF50", "#66BB6A"],
+  gradientSoft: ["#E8F5E9", "#C8E6C9"],
+  glass: "rgba(255, 255, 255, 0.9)",
 };
 
 const SkeletonLoader = ({ width, height, style }) => {
@@ -122,14 +124,14 @@ const EmptyState = ({ icon, title, subtitle, actionText, onAction }) => {
 
 const MatchBadge = ({ percent }) => {
   const getColor = () => {
-    if (percent >= 60) return COLORS.success;
-    if (percent >= 40) return COLORS.warning;
-    return COLORS.textSecondary;
+    if (percent >= 70) return '#10B981';
+    if (percent >= 50) return '#F59E0B';
+    return '#6B7280';
   };
 
   return (
     <View style={[styles.matchBadge, { backgroundColor: getColor() }]}>
-      <Text style={styles.matchBadgeText}>{percent}% match</Text>
+      <Text style={styles.matchBadgeText}>{percent}%</Text>
     </View>
   );
 };
@@ -227,7 +229,7 @@ const RecipeCard = ({ recipe, onPress, onFavorite, isFavorited, compact, gridMod
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
   const handlePressIn = () => {
-    Animated.spring(scaleAnim, { toValue: 0.97, useNativeDriver: true }).start();
+    Animated.spring(scaleAnim, { toValue: 0.96, useNativeDriver: true }).start();
   };
 
   const handlePressOut = () => {
@@ -245,7 +247,13 @@ const RecipeCard = ({ recipe, onPress, onFavorite, isFavorited, compact, gridMod
       >
         <View style={[styles.recipeImageContainer, compact && styles.recipeImageContainerCompact]}>
           {recipe.image ? (
-            <Image source={{ uri: recipe.image }} style={styles.recipeImage} />
+            <>
+              <Image source={{ uri: recipe.image }} style={styles.recipeImage} />
+              <LinearGradient
+                colors={['transparent', 'rgba(0,0,0,0.15)']}
+                style={styles.imageGradientOverlay}
+              />
+            </>
           ) : (
             <View style={[styles.recipeImagePlaceholder, { backgroundColor: getCategoryColor(recipe.category) }]}>
               <Text style={styles.recipeEmojiPlaceholder}>{recipe.emoji || '🍽️'}</Text>
@@ -258,11 +266,13 @@ const RecipeCard = ({ recipe, onPress, onFavorite, isFavorited, compact, gridMod
               onFavorite(recipe);
             }}
           >
-            <Ionicons
-              name={isFavorited ? "heart" : "heart-outline"}
-              size={20}
-              color={isFavorited ? COLORS.error : "#fff"}
-            />
+            <View style={styles.favoriteButtonBg}>
+              <Ionicons
+                name={isFavorited ? "heart" : "heart-outline"}
+                size={18}
+                color={isFavorited ? COLORS.error : "#fff"}
+              />
+            </View>
           </TouchableOpacity>
           {recipe.match_percent !== undefined && (
             <MatchBadge percent={recipe.match_percent} />
@@ -586,235 +596,308 @@ function HomeTab({ navigation }) {
     return "Good evening";
   };
 
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  
+  useEffect(() => {
+    if (!scanning && !searchingRecipes) {
+      const pulse = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 1.02, duration: 1500, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 1500, useNativeDriver: true }),
+        ])
+      );
+      pulse.start();
+      return () => pulse.stop();
+    }
+  }, [scanning, searchingRecipes]);
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
       
+      {/* Premium Header */}
       <View style={styles.homeHeader}>
         <View style={styles.headerLeft}>
-          <Text style={styles.greeting}>{greeting()}!</Text>
-          <Text style={styles.headerQuestion}>What's cooking today?</Text>
+          <Text style={styles.greeting}>{greeting()}</Text>
+          <Text style={styles.headerTitle}>Let's Cook</Text>
         </View>
         <TouchableOpacity 
-          style={[styles.headerIconBtn, apiKey && styles.headerIconBtnActive]} 
+          style={styles.avatarBtn} 
           onPress={() => setShowApiModal(true)}
+          activeOpacity={0.8}
         >
-          <Ionicons 
-            name={apiKey ? "checkmark-circle" : "key-outline"} 
-            size={22} 
-            color={apiKey ? COLORS.success : COLORS.textSecondary} 
-          />
+          <LinearGradient
+            colors={apiKey ? [COLORS.primary, COLORS.primaryLight] : ['#E5E7EB', '#D1D5DB']}
+            style={styles.avatarGradient}
+          >
+            <Ionicons 
+              name={apiKey ? "person" : "key-outline"} 
+              size={18} 
+              color="#fff"
+            />
+          </LinearGradient>
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        {/* Quick Actions */}
-        <View style={styles.quickActions}>
+      <ScrollView 
+        style={styles.scrollView} 
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
+        {/* Main Scan CTA */}
+        <Animated.View style={[styles.scanSection, { transform: [{ scale: pulseAnim }] }]}>
           <TouchableOpacity
-            style={styles.mainScanButton}
+            style={styles.mainScanCard}
             onPress={() => startScan(true)}
             disabled={scanning || searchingRecipes}
-            activeOpacity={0.9}
+            activeOpacity={0.95}
           >
             <LinearGradient
-              colors={scanning || searchingRecipes ? ["#9E9E9E", "#BDBDBD"] : COLORS.gradient}
-              style={styles.mainScanGradient}
+              colors={scanning || searchingRecipes ? ["#9CA3AF", "#D1D5DB"] : COLORS.gradient}
+              style={styles.scanGradient}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
             >
-              {scanning ? (
-                <View style={styles.scanningContent}>
-                  <ActivityIndicator color="#fff" size="small" />
-                  <Text style={styles.mainScanText}>Detecting...</Text>
-                </View>
-              ) : searchingRecipes ? (
-                <View style={styles.scanningContent}>
-                  <ActivityIndicator color="#fff" size="small" />
-                  <Text style={styles.mainScanText}>Finding recipes...</Text>
-                </View>
-              ) : (
-                <>
-                  <View style={styles.scanIconCircle}>
-                    <Ionicons name="camera-outline" size={28} color="#fff" />
-                  </View>
-                  <Text style={styles.mainScanText}>Scan Fridge</Text>
-                  <Text style={styles.mainScanSubtext}>Take a photo</Text>
-                </>
-              )}
+              <View style={styles.scanContent}>
+                {scanning || searchingRecipes ? (
+                  <>
+                    <ActivityIndicator color="#fff" size="large" />
+                    <Text style={styles.scanTitle}>
+                      {scanning ? "Analyzing..." : "Finding recipes..."}
+                    </Text>
+                    <Text style={styles.scanSubtitle}>This may take a moment</Text>
+                  </>
+                ) : (
+                  <>
+                    <View style={styles.scanIconWrapper}>
+                      <View style={styles.scanIconRing}>
+                        <Ionicons name="scan" size={32} color="#fff" />
+                      </View>
+                    </View>
+                    <Text style={styles.scanTitle}>Scan Your Fridge</Text>
+                    <Text style={styles.scanSubtitle}>AI detects ingredients instantly</Text>
+                  </>
+                )}
+              </View>
+              <View style={styles.scanDecoration} />
             </LinearGradient>
           </TouchableOpacity>
+        </Animated.View>
+
+        {/* Quick Actions */}
+        <View style={styles.quickActionsRow}>
+          <TouchableOpacity
+            style={styles.quickActionBtn}
+            onPress={() => startScan(false)}
+            disabled={scanning || searchingRecipes}
+            activeOpacity={0.7}
+          >
+            <View style={styles.quickActionIcon}>
+              <Ionicons name="images-outline" size={20} color={COLORS.primary} />
+            </View>
+            <Text style={styles.quickActionLabel}>Gallery</Text>
+          </TouchableOpacity>
           
-          <View style={styles.secondaryActions}>
-            <TouchableOpacity
-              style={styles.secondaryActionBtn}
-              onPress={() => startScan(false)}
-              disabled={scanning || searchingRecipes}
-              activeOpacity={0.8}
-            >
-              <View style={styles.secondaryActionIcon}>
-                <Ionicons name="images-outline" size={22} color={COLORS.primary} />
-              </View>
-              <Text style={styles.secondaryActionText}>Gallery</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={styles.secondaryActionBtn}
-              onPress={() => navigation.navigate("IngredientsTab")}
-              activeOpacity={0.8}
-            >
-              <View style={[styles.secondaryActionIcon, { backgroundColor: COLORS.accent + '15' }]}>
-                <Ionicons name="add-outline" size={22} color={COLORS.accent} />
-              </View>
-              <Text style={styles.secondaryActionText}>Add Manual</Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            style={styles.quickActionBtn}
+            onPress={() => navigation.navigate("IngredientsTab")}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.quickActionIcon, { backgroundColor: COLORS.accent + '12' }]}>
+              <Ionicons name="add" size={20} color={COLORS.accent} />
+            </View>
+            <Text style={styles.quickActionLabel}>Add Item</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={styles.quickActionBtn}
+            onPress={() => navigation.navigate("FavoritesTab")}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.quickActionIcon, { backgroundColor: COLORS.error + '12' }]}>
+              <Ionicons name="heart-outline" size={20} color={COLORS.error} />
+            </View>
+            <Text style={styles.quickActionLabel}>Saved</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={styles.quickActionBtn}
+            onPress={() => navigation.navigate("ShoppingTab")}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.quickActionIcon, { backgroundColor: '#8B5CF6' + '12' }]}>
+              <Ionicons name="list-outline" size={20} color="#8B5CF6" />
+            </View>
+            <Text style={styles.quickActionLabel}>List</Text>
+          </TouchableOpacity>
         </View>
 
-        {/* Stats Row */}
+        {/* Stats Cards */}
         {(ingredients.length > 0 || recipes.length > 0) && (
-          <View style={styles.statsRow}>
-            <View style={styles.statItem}>
-              <View style={[styles.statIcon, { backgroundColor: COLORS.primary + '15' }]}>
-                <Ionicons name="nutrition" size={18} color={COLORS.primary} />
+          <View style={styles.statsCards}>
+            <View style={styles.statCard}>
+              <View style={[styles.statCardIcon, { backgroundColor: COLORS.primary + '10' }]}>
+                <MaterialCommunityIcons name="food-apple-outline" size={22} color={COLORS.primary} />
               </View>
-              <View>
-                <Text style={styles.statNumber}>{ingredients.length}</Text>
-                <Text style={styles.statLabel}>Ingredients</Text>
-              </View>
+              <Text style={styles.statCardNumber}>{ingredients.length}</Text>
+              <Text style={styles.statCardLabel}>Ingredients</Text>
             </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <View style={[styles.statIcon, { backgroundColor: COLORS.accent + '15' }]}>
-                <Ionicons name="restaurant" size={18} color={COLORS.accent} />
+            <View style={styles.statCard}>
+              <View style={[styles.statCardIcon, { backgroundColor: COLORS.accent + '10' }]}>
+                <MaterialCommunityIcons name="chef-hat" size={22} color={COLORS.accent} />
               </View>
-              <View>
-                <Text style={styles.statNumber}>{recipes.length}</Text>
-                <Text style={styles.statLabel}>Recipes</Text>
-              </View>
+              <Text style={styles.statCardNumber}>{recipes.length}</Text>
+              <Text style={styles.statCardLabel}>Recipes</Text>
             </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <View style={[styles.statIcon, { backgroundColor: COLORS.error + '15' }]}>
-                <Ionicons name="heart" size={18} color={COLORS.error} />
+            <View style={styles.statCard}>
+              <View style={[styles.statCardIcon, { backgroundColor: COLORS.error + '10' }]}>
+                <Ionicons name="heart" size={20} color={COLORS.error} />
               </View>
-              <View>
-                <Text style={styles.statNumber}>{favorites.length}</Text>
-                <Text style={styles.statLabel}>Favorites</Text>
-              </View>
+              <Text style={styles.statCardNumber}>{favorites.length}</Text>
+              <Text style={styles.statCardLabel}>Saved</Text>
             </View>
           </View>
         )}
 
+        {/* Ingredients Section */}
         {ingredients.length > 0 && (
-          <View style={styles.section}>
+          <View style={styles.sectionContainer}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Your Ingredients</Text>
-              <TouchableOpacity onPress={() => navigation.navigate("IngredientsTab")}>
-                <Text style={styles.seeAllText}>Edit</Text>
+              <View style={styles.sectionTitleRow}>
+                <View style={styles.sectionIcon}>
+                  <Ionicons name="leaf" size={16} color={COLORS.primary} />
+                </View>
+                <Text style={styles.sectionTitle}>Your Pantry</Text>
+              </View>
+              <TouchableOpacity 
+                style={styles.viewAllBtn}
+                onPress={() => navigation.navigate("IngredientsTab")}
+              >
+                <Text style={styles.viewAllText}>View all</Text>
+                <Ionicons name="chevron-forward" size={16} color={COLORS.primary} />
               </TouchableOpacity>
             </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.ingredientsScroll}>
-              {ingredients.slice(0, 8).map((ing, i) => (
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false} 
+              contentContainerStyle={styles.ingredientsScrollContent}
+            >
+              {ingredients.slice(0, 10).map((ing, i) => (
                 <IngredientChip key={i} ingredient={ing} />
               ))}
-              {ingredients.length > 8 && (
-                <View style={styles.moreChip}>
-                  <Text style={styles.moreChipText}>+{ingredients.length - 8}</Text>
-                </View>
+              {ingredients.length > 10 && (
+                <TouchableOpacity 
+                  style={styles.moreChip}
+                  onPress={() => navigation.navigate("IngredientsTab")}
+                >
+                  <Text style={styles.moreChipText}>+{ingredients.length - 10}</Text>
+                </TouchableOpacity>
               )}
             </ScrollView>
-            {recipes.length > 0 && (
-              <TouchableOpacity 
-                style={styles.refreshRecipesBtn}
-                onPress={() => searchRecipes(ingredients)}
-                disabled={searchingRecipes}
-              >
-                <Ionicons name="refresh-outline" size={16} color={COLORS.primary} />
-                <Text style={styles.refreshRecipesText}>Refresh recipes</Text>
-              </TouchableOpacity>
-            )}
           </View>
         )}
 
+        {/* Loading State */}
         {(scanning || searchingRecipes) && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Finding recipes...</Text>
+          <View style={styles.sectionContainer}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Finding perfect matches...</Text>
+            </View>
             <View style={styles.skeletonRow}>
-              <SkeletonLoader width={SCREEN_WIDTH * 0.42} height={200} style={{ marginRight: 12 }} />
-              <SkeletonLoader width={SCREEN_WIDTH * 0.42} height={200} />
+              <SkeletonLoader width={SCREEN_WIDTH * 0.44} height={220} style={styles.skeletonCard} />
+              <SkeletonLoader width={SCREEN_WIDTH * 0.44} height={220} style={styles.skeletonCard} />
             </View>
           </View>
         )}
 
+        {/* Empty State */}
         {!scanning && !searchingRecipes && recipes.length === 0 && ingredients.length === 0 && (
-          <EmptyState
-            icon="restaurant-outline"
-            title="No ingredients yet"
-            subtitle="Scan your fridge to discover real recipes from around the world!"
-            actionText="Scan Now"
-            onAction={() => startScan(true)}
-          />
+          <View style={styles.emptyStateContainer}>
+            <EmptyState
+              icon="restaurant-outline"
+              title="Ready to cook?"
+              subtitle="Scan your fridge to discover delicious recipes from around the world"
+              actionText="Get Started"
+              onAction={() => startScan(true)}
+            />
+          </View>
         )}
 
+        {/* Category Filters */}
         {!scanning && !searchingRecipes && recipes.length > 0 && (
           <View style={styles.filterSection}>
-            <View style={styles.filterHeader}>
-              <Ionicons name="filter-outline" size={18} color={COLORS.textSecondary} />
-              <Text style={styles.filterTitle}>Filter by Category</Text>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Categories</Text>
               {!isAllSelected && (
-                <Text style={styles.filterCount}>({totalFilteredRecipes} recipes)</Text>
+                <View style={styles.filterBadge}>
+                  <Text style={styles.filterBadgeText}>{totalFilteredRecipes}</Text>
+                </View>
               )}
             </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false} 
+              contentContainerStyle={styles.filterScrollContent}
+            >
               {RECIPE_CATEGORIES.map((cat) => {
                 const isSelected = cat.id === 'all' ? isAllSelected : selectedCategories.includes(cat.id);
                 return (
-                  <TouchableOpacity
-                    key={cat.id}
-                    style={[styles.filterChip, isSelected && styles.filterChipSelected]}
-                    onPress={() => toggleCategory(cat.id)}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons 
-                      name={cat.icon} 
-                      size={16} 
-                      color={isSelected ? '#fff' : COLORS.textSecondary} 
-                    />
-                    <Text style={[styles.filterChipText, isSelected && styles.filterChipTextSelected]}>
-                      {cat.label}
-                    </Text>
-                  </TouchableOpacity>
+                  <Animated.View key={cat.id}>
+                    <TouchableOpacity
+                      style={[styles.categoryChip, isSelected && styles.categoryChipSelected]}
+                      onPress={() => toggleCategory(cat.id)}
+                      activeOpacity={0.8}
+                    >
+                      <View style={[styles.categoryChipIcon, isSelected && styles.categoryChipIconSelected]}>
+                        <Ionicons
+                          name={cat.icon}
+                          size={18}
+                          color={isSelected ? '#fff' : COLORS.textSecondary}
+                        />
+                      </View>
+                      <Text style={[styles.categoryChipText, isSelected && styles.categoryChipTextSelected]}>
+                        {cat.label}
+                      </Text>
+                    </TouchableOpacity>
+                  </Animated.View>
                 );
               })}
             </ScrollView>
           </View>
         )}
 
+        {/* Recipe Sections */}
         {!scanning && !searchingRecipes && Object.entries(filteredCategorizedRecipes).map(([category, categoryRecipes]) => {
           if (!categoryRecipes || categoryRecipes.length === 0) return null;
 
-          const getCategoryIcon = (cat) => {
+          const getCategoryConfig = (cat) => {
             switch(cat) {
-              case 'Quick & Easy': return { icon: 'flash', color: COLORS.warning };
-              case 'Best Matches': return { icon: 'star', color: COLORS.success };
-              case 'Good Options': return { icon: 'thumbs-up', color: COLORS.primary };
-              default: return { icon: 'bulb-outline', color: COLORS.textSecondary };
+              case 'Quick & Easy': return { icon: 'flash', color: '#F59E0B', bg: '#FEF3C7' };
+              case 'Best Matches': return { icon: 'star', color: '#10B981', bg: '#D1FAE5' };
+              case 'Good Options': return { icon: 'checkmark-circle', color: '#3B82F6', bg: '#DBEAFE' };
+              default: return { icon: 'sparkles', color: '#8B5CF6', bg: '#EDE9FE' };
             }
           };
-          const { icon, color } = getCategoryIcon(category);
+          const { icon, color, bg } = getCategoryConfig(category);
 
           return (
-            <View key={category} style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <View style={styles.sectionTitleRow}>
-                  <Ionicons name={icon} size={18} color={color} />
-                  <Text style={styles.sectionTitle}>{category}</Text>
+            <View key={category} style={styles.recipeSection}>
+              <View style={styles.recipeSectionHeader}>
+                <View style={styles.recipeSectionTitleRow}>
+                  <View style={[styles.recipeSectionIcon, { backgroundColor: bg }]}>
+                    <Ionicons name={icon} size={16} color={color} />
+                  </View>
+                  <Text style={styles.recipeSectionTitle}>{category}</Text>
                 </View>
-                <View style={styles.countBadge}>
-                  <Text style={styles.countText}>{categoryRecipes.length}</Text>
+                <View style={[styles.recipeSectionBadge, { backgroundColor: bg }]}>
+                  <Text style={[styles.recipeSectionCount, { color }]}>{categoryRecipes.length}</Text>
                 </View>
               </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <ScrollView 
+                horizontal 
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.recipeScrollContent}
+              >
                 {categoryRecipes.map((recipe, index) => (
                   <RecipeCard
                     key={`${recipe.id}-${index}`}
@@ -1583,7 +1666,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: 20,
+    paddingBottom: 100,
   },
 
   // Home Header
@@ -1591,196 +1674,222 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 8,
+    paddingHorizontal: 24,
+    paddingTop: 8,
+    paddingBottom: 16,
   },
   headerLeft: {
     flex: 1,
   },
   greeting: {
-    fontSize: 15,
+    fontSize: 14,
     color: COLORS.textSecondary,
     fontWeight: "500",
+    letterSpacing: 0.2,
   },
-  headerQuestion: {
-    fontSize: 26,
+  headerTitle: {
+    fontSize: 28,
     fontWeight: "800",
     color: COLORS.text,
     marginTop: 2,
-    letterSpacing: -0.5,
+    letterSpacing: -0.8,
   },
-  headerIconBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: COLORS.card,
+  avatarBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    overflow: "hidden",
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  avatarGradient: {
+    flex: 1,
     justifyContent: "center",
+    alignItems: "center",
+  },
+
+  // Main Scan Section
+  scanSection: {
+    paddingHorizontal: 24,
+    marginBottom: 24,
+  },
+  mainScanCard: {
+    borderRadius: 24,
+    overflow: "hidden",
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  scanGradient: {
+    paddingVertical: 32,
+    paddingHorizontal: 24,
+    minHeight: 160,
+    position: "relative",
+  },
+  scanContent: {
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 2,
+  },
+  scanIconWrapper: {
+    marginBottom: 16,
+  },
+  scanIconRing: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.3)",
+  },
+  scanTitle: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: "#fff",
+    letterSpacing: -0.3,
+  },
+  scanSubtitle: {
+    fontSize: 14,
+    color: "rgba(255,255,255,0.85)",
+    marginTop: 6,
+    fontWeight: "500",
+  },
+  scanDecoration: {
+    position: "absolute",
+    top: -50,
+    right: -50,
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
+  scanningContent: {
+    alignItems: "center",
+    gap: 12,
+  },
+
+  // Quick Actions Row
+  quickActionsRow: {
+    flexDirection: "row",
+    paddingHorizontal: 24,
+    marginBottom: 24,
+    gap: 12,
+  },
+  quickActionBtn: {
+    flex: 1,
+    alignItems: "center",
+    padding: 12,
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  quickActionIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: COLORS.primary + '10',
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  quickActionLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: COLORS.textSecondary,
+  },
+
+  // Stats Cards
+  statsCards: {
+    flexDirection: "row",
+    paddingHorizontal: 24,
+    marginBottom: 28,
+    gap: 12,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    padding: 16,
     alignItems: "center",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
+    shadowOpacity: 0.04,
     shadowRadius: 8,
     elevation: 2,
-    borderWidth: 1,
-    borderColor: COLORS.border,
   },
-  headerIconBtnActive: {
-    borderColor: COLORS.success + '40',
-    backgroundColor: COLORS.success + '10',
-  },
-
-  // Quick Actions
-  quickActions: {
-    flexDirection: "row",
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    gap: 12,
-  },
-  mainScanButton: {
-    flex: 1.3,
-    borderRadius: 20,
-    overflow: "hidden",
-    shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  mainScanGradient: {
-    paddingVertical: 24,
-    paddingHorizontal: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: 140,
-  },
-  scanIconCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: "rgba(255,255,255,0.25)",
+  statCardIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 10,
   },
-  mainScanText: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: "#fff",
-    marginTop: 4,
-  },
-  mainScanSubtext: {
-    fontSize: 12,
-    color: "rgba(255,255,255,0.8)",
-    marginTop: 2,
-  },
-  secondaryActions: {
-    flex: 1,
-    gap: 12,
-  },
-  secondaryActionBtn: {
-    flex: 1,
-    backgroundColor: COLORS.card,
-    borderRadius: 16,
-    padding: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  secondaryActionIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: COLORS.primary + '15',
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 6,
-  },
-  secondaryActionText: {
-    fontSize: 12,
-    fontWeight: "600",
+  statCardNumber: {
+    fontSize: 22,
+    fontWeight: "800",
     color: COLORS.text,
   },
-  scanningContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-
-  // Stats Row
-  statsRow: {
-    flexDirection: "row",
-    marginHorizontal: 20,
-    marginBottom: 20,
-    backgroundColor: COLORS.card,
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  statItem: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  statIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  statNumber: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: COLORS.text,
-  },
-  statLabel: {
+  statCardLabel: {
     fontSize: 11,
     color: COLORS.textSecondary,
-    marginTop: 1,
-  },
-  statDivider: {
-    width: 1,
-    height: 32,
-    backgroundColor: COLORS.border,
-    marginHorizontal: 8,
+    marginTop: 2,
+    fontWeight: "500",
   },
 
   // Sections
-  section: {
+  // Section Container
+  sectionContainer: {
     marginBottom: 28,
-    paddingHorizontal: 20,
   },
   sectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 14,
+    paddingHorizontal: 24,
+    marginBottom: 16,
   },
   sectionTitleRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
   },
+  sectionIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: COLORS.primary + '12',
+    justifyContent: "center",
+    alignItems: "center",
+  },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: "800",
+    fontWeight: "700",
     color: COLORS.text,
     letterSpacing: -0.3,
   },
-  seeAllText: {
-    fontSize: 14,
+  viewAllBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: COLORS.primary + '08',
+    borderRadius: 20,
+  },
+  viewAllText: {
+    fontSize: 13,
     fontWeight: "600",
     color: COLORS.primary,
   },
@@ -1797,35 +1906,33 @@ const styles = StyleSheet.create({
   },
 
   // Ingredients Scroll
-  ingredientsScroll: {
-    flexDirection: "row",
+  ingredientsScrollContent: {
+    paddingHorizontal: 24,
+    gap: 10,
   },
   ingredientChip: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: COLORS.card,
-    borderRadius: 14,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    marginRight: 10,
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.06,
     shadowRadius: 8,
     elevation: 2,
-    borderWidth: 1,
-    borderColor: COLORS.border,
   },
   ingredientChipIcon: {
-    width: 32,
-    height: 32,
+    width: 36,
+    height: 36,
     borderRadius: 10,
     justifyContent: "center",
     alignItems: "center",
     marginRight: 10,
   },
   ingredientChipContent: {
-    maxWidth: 90,
+    maxWidth: 80,
   },
   ingredientChipName: {
     fontSize: 14,
@@ -1836,10 +1943,10 @@ const styles = StyleSheet.create({
   ingredientChipQuantity: {
     fontSize: 11,
     color: COLORS.textSecondary,
-    marginTop: 1,
+    marginTop: 2,
   },
   ingredientChipRemove: {
-    marginLeft: 6,
+    marginLeft: 8,
     padding: 2,
   },
   chipRemoveIcon: {
@@ -1851,86 +1958,121 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   moreChip: {
-    backgroundColor: COLORS.primary + "15",
-    borderRadius: 12,
-    paddingHorizontal: 16,
+    backgroundColor: COLORS.primary + "12",
+    borderRadius: 16,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
     justifyContent: "center",
+    alignItems: "center",
   },
   moreChipText: {
     fontSize: 14,
-    fontWeight: "600",
-    color: COLORS.primary,
-  },
-  refreshRecipesBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    marginTop: 12,
-    paddingVertical: 8,
-  },
-  refreshRecipesText: {
-    fontSize: 14,
-    fontWeight: "500",
+    fontWeight: "700",
     color: COLORS.primary,
   },
 
   // Category Filters
   filterSection: {
-    marginBottom: 20,
-    paddingHorizontal: 20,
+    marginBottom: 24,
   },
-  filterHeader: {
+  filterScrollContent: {
+    paddingHorizontal: 24,
+    gap: 10,
+  },
+  filterBadge: {
+    backgroundColor: COLORS.primary + '15',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  filterBadgeText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: COLORS.primary,
+  },
+  categoryChip: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    marginBottom: 14,
-  },
-  filterTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: COLORS.text,
-  },
-  filterCount: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    fontWeight: "500",
-  },
-  filterScroll: {
-    flexDirection: "row",
-  },
-  filterChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
     backgroundColor: COLORS.card,
-    borderRadius: 24,
+    borderRadius: 20,
     paddingVertical: 10,
-    paddingHorizontal: 16,
-    marginRight: 10,
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
+    paddingHorizontal: 14,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.03,
-    shadowRadius: 4,
-    elevation: 1,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
   },
-  filterChipSelected: {
+  categoryChipSelected: {
     backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
     shadowColor: COLORS.primary,
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 3,
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 4,
+    transform: [{ scale: 1.02 }],
   },
-  filterChipText: {
+  categoryChipIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: COLORS.background,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  categoryChipIconSelected: {
+    backgroundColor: "rgba(255,255,255,0.2)",
+  },
+  categoryChipText: {
     fontSize: 14,
     fontWeight: "600",
-    color: COLORS.textSecondary,
+    color: COLORS.text,
   },
-  filterChipTextSelected: {
+  categoryChipTextSelected: {
     color: "#fff",
+  },
+
+  // Recipe Section
+  recipeSection: {
+    marginBottom: 28,
+  },
+  recipeSectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 24,
+    marginBottom: 16,
+  },
+  recipeSectionTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  recipeSectionIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  recipeSectionTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: COLORS.text,
+    letterSpacing: -0.3,
+  },
+  recipeSectionBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 10,
+  },
+  recipeSectionCount: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  recipeScrollContent: {
+    paddingHorizontal: 24,
+    gap: 14,
   },
   noResultsContainer: {
     alignItems: "center",
@@ -1966,28 +2108,24 @@ const styles = StyleSheet.create({
 
   // Recipe Cards
   recipeCard: {
-    width: SCREEN_WIDTH * 0.44,
+    width: SCREEN_WIDTH * 0.46,
     backgroundColor: COLORS.card,
-    borderRadius: 18,
-    marginRight: 14,
+    borderRadius: 20,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 14,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 6,
     overflow: "hidden",
-    borderWidth: 1,
-    borderColor: COLORS.border,
   },
   recipeCardCompact: {
-    width: SCREEN_WIDTH * 0.44,
+    width: SCREEN_WIDTH * 0.46,
   },
   recipeCardGrid: {
     width: "100%",
-    marginRight: 0,
   },
   recipeImageContainer: {
-    height: 135,
+    height: 145,
     position: "relative",
   },
   recipeImageContainerCompact: {
@@ -1997,6 +2135,13 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
     resizeMode: "cover",
+  },
+  imageGradientOverlay: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 60,
   },
   recipeImagePlaceholder: {
     flex: 1,
@@ -2011,45 +2156,60 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 10,
     right: 10,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "rgba(0,0,0,0.3)",
+  },
+  favoriteButtonBg: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "rgba(0,0,0,0.25)",
     justifyContent: "center",
     alignItems: "center",
+    backdropFilter: "blur(10px)",
   },
   matchBadge: {
     position: "absolute",
     bottom: 10,
     left: 10,
     paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingVertical: 5,
+    borderRadius: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
   },
   matchBadgeText: {
-    fontSize: 11,
-    fontWeight: "700",
+    fontSize: 12,
+    fontWeight: "800",
     color: "#fff",
+    letterSpacing: 0.3,
   },
   recipeCardContent: {
     padding: 14,
+    paddingTop: 12,
   },
   recipeCardTitle: {
     fontSize: 15,
     fontWeight: "700",
     color: COLORS.text,
-    marginBottom: 8,
+    marginBottom: 10,
     lineHeight: 20,
+    letterSpacing: -0.2,
   },
   recipeCardMeta: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
+    gap: 6,
   },
   metaItem: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    backgroundColor: COLORS.background,
+    borderRadius: 8,
   },
   metaText: {
     fontSize: 12,
@@ -2127,7 +2287,17 @@ const styles = StyleSheet.create({
   // Skeleton
   skeletonRow: {
     flexDirection: "row",
-    marginTop: 12,
+    paddingHorizontal: 24,
+    gap: 14,
+  },
+  skeletonCard: {
+    borderRadius: 20,
+  },
+  
+  // Empty State Container
+  emptyStateContainer: {
+    paddingHorizontal: 24,
+    paddingTop: 20,
   },
 
   // Screen Header
@@ -2691,32 +2861,32 @@ const styles = StyleSheet.create({
   // Tab Bar
   tabBar: {
     position: "absolute",
-    backgroundColor: COLORS.card,
+    backgroundColor: COLORS.glass,
     borderTopWidth: 0,
-    height: 85,
-    paddingBottom: 24,
-    paddingTop: 8,
+    height: 88,
+    paddingBottom: 28,
+    paddingTop: 12,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 16,
-    elevation: 10,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    shadowOffset: { width: 0, height: -8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 24,
+    elevation: 15,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
   },
   tabBarLabel: {
     fontSize: 11,
     fontWeight: "600",
-    marginTop: 2,
+    marginTop: 4,
   },
   tabIconContainer: {
-    width: 42,
+    width: 48,
     height: 32,
-    borderRadius: 12,
+    borderRadius: 16,
     justifyContent: "center",
     alignItems: "center",
   },
   tabIconContainerActive: {
-    backgroundColor: COLORS.primary + '15',
+    backgroundColor: COLORS.primary + '12',
   },
 });
