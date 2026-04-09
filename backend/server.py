@@ -11,6 +11,667 @@ CORS(app)
 
 THEMEALDB_BASE = "https://www.themealdb.com/api/json/v1/1"
 
+# Built-in simple recipes database
+SIMPLE_RECIPES = [
+    {
+        "id": "simple_001",
+        "name": "Classic Scrambled Eggs",
+        "category": "Breakfast",
+        "area": "American",
+        "image": "https://www.themealdb.com/images/media/meals/1529446352.jpg",
+        "source": "",
+        "youtube": "",
+        "ingredients": [
+            {"name": "eggs", "measure": "3"},
+            {"name": "butter", "measure": "1 tbsp"},
+            {"name": "salt", "measure": "pinch"},
+            {"name": "pepper", "measure": "pinch"},
+        ],
+        "steps": [
+            "Crack eggs into a bowl and beat with a fork until well combined.",
+            "Heat butter in a non-stick pan over medium-low heat.",
+            "Pour in eggs and let them sit for 20 seconds.",
+            "Gently push eggs from edges to center, forming soft curds.",
+            "Remove from heat while still slightly wet - they'll continue cooking.",
+            "Season with salt and pepper, serve immediately."
+        ]
+    },
+    {
+        "id": "simple_002",
+        "name": "Grilled Cheese Sandwich",
+        "category": "Lunch",
+        "area": "American",
+        "image": "https://www.themealdb.com/images/media/meals/xutquv1505330523.jpg",
+        "source": "",
+        "youtube": "",
+        "ingredients": [
+            {"name": "bread", "measure": "2 slices"},
+            {"name": "cheese", "measure": "2 slices"},
+            {"name": "butter", "measure": "2 tbsp"},
+        ],
+        "steps": [
+            "Butter one side of each bread slice.",
+            "Heat a pan over medium heat.",
+            "Place one slice butter-side down in the pan.",
+            "Add cheese slices on top.",
+            "Place second bread slice on top, butter-side up.",
+            "Cook until golden brown, about 3 minutes.",
+            "Flip and cook the other side until golden and cheese is melted."
+        ]
+    },
+    {
+        "id": "simple_003",
+        "name": "Ham and Cheese Sandwich",
+        "category": "Lunch",
+        "area": "American",
+        "image": "https://www.themealdb.com/images/media/meals/xutquv1505330523.jpg",
+        "source": "",
+        "youtube": "",
+        "ingredients": [
+            {"name": "bread", "measure": "2 slices"},
+            {"name": "ham", "measure": "3 slices"},
+            {"name": "cheese", "measure": "2 slices"},
+            {"name": "butter", "measure": "1 tbsp"},
+            {"name": "lettuce", "measure": "1 leaf"},
+        ],
+        "steps": [
+            "Butter one side of each bread slice.",
+            "Layer ham and cheese on unbuttered side.",
+            "Add lettuce if desired.",
+            "Top with second slice of bread.",
+            "Cut diagonally and serve."
+        ]
+    },
+    {
+        "id": "simple_004",
+        "name": "Buttered Toast with Jam",
+        "category": "Breakfast",
+        "area": "British",
+        "image": "https://www.themealdb.com/images/media/meals/1550441882.jpg",
+        "source": "",
+        "youtube": "",
+        "ingredients": [
+            {"name": "bread", "measure": "2 slices"},
+            {"name": "butter", "measure": "2 tbsp"},
+            {"name": "jam", "measure": "2 tbsp"},
+        ],
+        "steps": [
+            "Toast bread until golden brown.",
+            "Spread butter while still warm.",
+            "Add jam on top.",
+            "Serve immediately."
+        ]
+    },
+    {
+        "id": "simple_005",
+        "name": "Simple Omelette",
+        "category": "Breakfast",
+        "area": "French",
+        "image": "https://www.themealdb.com/images/media/meals/ustsqw1468250014.jpg",
+        "source": "",
+        "youtube": "",
+        "ingredients": [
+            {"name": "eggs", "measure": "3"},
+            {"name": "butter", "measure": "1 tbsp"},
+            {"name": "salt", "measure": "pinch"},
+            {"name": "pepper", "measure": "pinch"},
+        ],
+        "steps": [
+            "Beat eggs with salt and pepper.",
+            "Heat butter in a non-stick pan over medium heat.",
+            "Pour in eggs and let set for 30 seconds.",
+            "Gently lift edges and tilt pan to let uncooked egg flow underneath.",
+            "When almost set, fold in half.",
+            "Slide onto plate and serve."
+        ]
+    },
+    {
+        "id": "simple_006",
+        "name": "Cheese Omelette",
+        "category": "Breakfast",
+        "area": "French",
+        "image": "https://www.themealdb.com/images/media/meals/ustsqw1468250014.jpg",
+        "source": "",
+        "youtube": "",
+        "ingredients": [
+            {"name": "eggs", "measure": "3"},
+            {"name": "cheese", "measure": "50g"},
+            {"name": "butter", "measure": "1 tbsp"},
+            {"name": "salt", "measure": "pinch"},
+        ],
+        "steps": [
+            "Beat eggs with salt.",
+            "Heat butter in a non-stick pan.",
+            "Pour in eggs and cook until almost set.",
+            "Add grated cheese to one half.",
+            "Fold omelette in half.",
+            "Cook 30 more seconds until cheese melts."
+        ]
+    },
+    {
+        "id": "simple_007",
+        "name": "Avocado Toast",
+        "category": "Breakfast",
+        "area": "American",
+        "image": "https://www.themealdb.com/images/media/meals/1550441882.jpg",
+        "source": "",
+        "youtube": "",
+        "ingredients": [
+            {"name": "bread", "measure": "2 slices"},
+            {"name": "avocado", "measure": "1"},
+            {"name": "salt", "measure": "pinch"},
+            {"name": "pepper", "measure": "pinch"},
+            {"name": "lemon juice", "measure": "1 tsp"},
+        ],
+        "steps": [
+            "Toast bread until golden.",
+            "Cut avocado in half, remove pit, scoop out flesh.",
+            "Mash avocado with fork, add lemon juice, salt, pepper.",
+            "Spread on toast.",
+            "Optional: top with red pepper flakes or everything bagel seasoning."
+        ]
+    },
+    {
+        "id": "simple_008",
+        "name": "Fried Egg Sandwich",
+        "category": "Breakfast",
+        "area": "American",
+        "image": "https://www.themealdb.com/images/media/meals/xutquv1505330523.jpg",
+        "source": "",
+        "youtube": "",
+        "ingredients": [
+            {"name": "bread", "measure": "2 slices"},
+            {"name": "eggs", "measure": "1"},
+            {"name": "butter", "measure": "1 tbsp"},
+            {"name": "salt", "measure": "pinch"},
+        ],
+        "steps": [
+            "Toast bread lightly.",
+            "Fry egg in butter until whites are set.",
+            "Place egg on one slice of bread.",
+            "Season with salt.",
+            "Top with second slice and serve."
+        ]
+    },
+    {
+        "id": "simple_009",
+        "name": "Tomato Sandwich",
+        "category": "Lunch",
+        "area": "American",
+        "image": "https://www.themealdb.com/images/media/meals/xutquv1505330523.jpg",
+        "source": "",
+        "youtube": "",
+        "ingredients": [
+            {"name": "bread", "measure": "2 slices"},
+            {"name": "tomato", "measure": "1"},
+            {"name": "mayonnaise", "measure": "1 tbsp"},
+            {"name": "salt", "measure": "pinch"},
+            {"name": "pepper", "measure": "pinch"},
+        ],
+        "steps": [
+            "Slice tomato into thick rounds.",
+            "Spread mayonnaise on both bread slices.",
+            "Layer tomato slices on one slice.",
+            "Season generously with salt and pepper.",
+            "Top with second slice and serve immediately."
+        ]
+    },
+    {
+        "id": "simple_010",
+        "name": "BLT Sandwich",
+        "category": "Lunch",
+        "area": "American",
+        "image": "https://www.themealdb.com/images/media/meals/xutquv1505330523.jpg",
+        "source": "",
+        "youtube": "",
+        "ingredients": [
+            {"name": "bread", "measure": "2 slices"},
+            {"name": "bacon", "measure": "4 strips"},
+            {"name": "lettuce", "measure": "2 leaves"},
+            {"name": "tomato", "measure": "1"},
+            {"name": "mayonnaise", "measure": "1 tbsp"},
+        ],
+        "steps": [
+            "Cook bacon until crispy, drain on paper towels.",
+            "Toast bread.",
+            "Spread mayonnaise on both slices.",
+            "Layer lettuce, tomato slices, and bacon.",
+            "Top with second slice and cut in half."
+        ]
+    },
+    {
+        "id": "simple_011",
+        "name": "Banana Smoothie",
+        "category": "Breakfast",
+        "area": "American",
+        "image": "https://www.themealdb.com/images/media/meals/1550441882.jpg",
+        "source": "",
+        "youtube": "",
+        "ingredients": [
+            {"name": "banana", "measure": "1"},
+            {"name": "milk", "measure": "1 cup"},
+            {"name": "honey", "measure": "1 tbsp"},
+        ],
+        "steps": [
+            "Peel and slice banana.",
+            "Add banana, milk, and honey to blender.",
+            "Blend until smooth.",
+            "Pour into glass and serve cold."
+        ]
+    },
+    {
+        "id": "simple_012",
+        "name": "Fruit Yogurt Bowl",
+        "category": "Breakfast",
+        "area": "American",
+        "image": "https://www.themealdb.com/images/media/meals/1550441882.jpg",
+        "source": "",
+        "youtube": "",
+        "ingredients": [
+            {"name": "yogurt", "measure": "1 cup"},
+            {"name": "banana", "measure": "1"},
+            {"name": "honey", "measure": "1 tbsp"},
+        ],
+        "steps": [
+            "Add yogurt to a bowl.",
+            "Slice banana and arrange on top.",
+            "Drizzle with honey.",
+            "Add any other available fruits."
+        ]
+    },
+    {
+        "id": "simple_013",
+        "name": "Peanut Butter Sandwich",
+        "category": "Snack",
+        "area": "American",
+        "image": "https://www.themealdb.com/images/media/meals/xutquv1505330523.jpg",
+        "source": "",
+        "youtube": "",
+        "ingredients": [
+            {"name": "bread", "measure": "2 slices"},
+            {"name": "peanut butter", "measure": "2 tbsp"},
+        ],
+        "steps": [
+            "Spread peanut butter on one slice of bread.",
+            "Top with second slice.",
+            "Cut in half if desired."
+        ]
+    },
+    {
+        "id": "simple_014",
+        "name": "PB&J Sandwich",
+        "category": "Snack",
+        "area": "American",
+        "image": "https://www.themealdb.com/images/media/meals/xutquv1505330523.jpg",
+        "source": "",
+        "youtube": "",
+        "ingredients": [
+            {"name": "bread", "measure": "2 slices"},
+            {"name": "peanut butter", "measure": "2 tbsp"},
+            {"name": "jam", "measure": "2 tbsp"},
+        ],
+        "steps": [
+            "Spread peanut butter on one slice.",
+            "Spread jam on the other slice.",
+            "Press together and cut diagonally."
+        ]
+    },
+    {
+        "id": "simple_015",
+        "name": "Simple Pasta with Butter",
+        "category": "Dinner",
+        "area": "Italian",
+        "image": "https://www.themealdb.com/images/media/meals/wvqpwt1468339226.jpg",
+        "source": "",
+        "youtube": "",
+        "ingredients": [
+            {"name": "pasta", "measure": "200g"},
+            {"name": "butter", "measure": "3 tbsp"},
+            {"name": "parmesan", "measure": "50g"},
+            {"name": "salt", "measure": "to taste"},
+        ],
+        "steps": [
+            "Cook pasta according to package directions.",
+            "Drain, reserving 1/2 cup pasta water.",
+            "Toss hot pasta with butter until melted.",
+            "Add parmesan and toss, adding pasta water if needed.",
+            "Season with salt and serve."
+        ]
+    },
+    {
+        "id": "simple_016",
+        "name": "Garlic Butter Pasta",
+        "category": "Dinner",
+        "area": "Italian",
+        "image": "https://www.themealdb.com/images/media/meals/wvqpwt1468339226.jpg",
+        "source": "",
+        "youtube": "",
+        "ingredients": [
+            {"name": "pasta", "measure": "200g"},
+            {"name": "butter", "measure": "3 tbsp"},
+            {"name": "garlic", "measure": "4 cloves"},
+            {"name": "parsley", "measure": "2 tbsp"},
+            {"name": "salt", "measure": "to taste"},
+        ],
+        "steps": [
+            "Cook pasta according to package directions.",
+            "Mince garlic and sauté in butter until fragrant.",
+            "Toss drained pasta with garlic butter.",
+            "Add chopped parsley and salt.",
+            "Serve hot."
+        ]
+    },
+    {
+        "id": "simple_017",
+        "name": "Quick Tomato Pasta",
+        "category": "Dinner",
+        "area": "Italian",
+        "image": "https://www.themealdb.com/images/media/meals/wvqpwt1468339226.jpg",
+        "source": "",
+        "youtube": "",
+        "ingredients": [
+            {"name": "pasta", "measure": "200g"},
+            {"name": "tomatoes", "measure": "3"},
+            {"name": "garlic", "measure": "2 cloves"},
+            {"name": "olive oil", "measure": "2 tbsp"},
+            {"name": "salt", "measure": "to taste"},
+            {"name": "basil", "measure": "handful"},
+        ],
+        "steps": [
+            "Cook pasta according to package directions.",
+            "Dice tomatoes, mince garlic.",
+            "Sauté garlic in olive oil for 1 minute.",
+            "Add tomatoes, cook 5 minutes until soft.",
+            "Toss with drained pasta.",
+            "Add fresh basil and serve."
+        ]
+    },
+    {
+        "id": "simple_018",
+        "name": "Egg Fried Rice",
+        "category": "Dinner",
+        "area": "Chinese",
+        "image": "https://www.themealdb.com/images/media/meals/1529446352.jpg",
+        "source": "",
+        "youtube": "",
+        "ingredients": [
+            {"name": "rice", "measure": "2 cups cooked"},
+            {"name": "eggs", "measure": "2"},
+            {"name": "soy sauce", "measure": "2 tbsp"},
+            {"name": "oil", "measure": "2 tbsp"},
+            {"name": "green onion", "measure": "2"},
+        ],
+        "steps": [
+            "Heat oil in a wok or large pan over high heat.",
+            "Beat eggs and scramble in the hot oil.",
+            "Add cold rice and stir-fry for 3-4 minutes.",
+            "Add soy sauce and toss to combine.",
+            "Top with sliced green onions."
+        ]
+    },
+    {
+        "id": "simple_019",
+        "name": "Cheese Quesadilla",
+        "category": "Snack",
+        "area": "Mexican",
+        "image": "https://www.themealdb.com/images/media/meals/1529446352.jpg",
+        "source": "",
+        "youtube": "",
+        "ingredients": [
+            {"name": "tortilla", "measure": "2"},
+            {"name": "cheese", "measure": "100g"},
+            {"name": "butter", "measure": "1 tbsp"},
+        ],
+        "steps": [
+            "Heat a pan over medium heat.",
+            "Place one tortilla in the pan.",
+            "Spread shredded cheese evenly.",
+            "Top with second tortilla.",
+            "Cook until bottom is golden, flip.",
+            "Cook other side until cheese melts.",
+            "Cut into wedges and serve."
+        ]
+    },
+    {
+        "id": "simple_020",
+        "name": "Tuna Sandwich",
+        "category": "Lunch",
+        "area": "American",
+        "image": "https://www.themealdb.com/images/media/meals/xutquv1505330523.jpg",
+        "source": "",
+        "youtube": "",
+        "ingredients": [
+            {"name": "bread", "measure": "2 slices"},
+            {"name": "tuna", "measure": "1 can"},
+            {"name": "mayonnaise", "measure": "2 tbsp"},
+            {"name": "salt", "measure": "pinch"},
+            {"name": "pepper", "measure": "pinch"},
+        ],
+        "steps": [
+            "Drain tuna and place in a bowl.",
+            "Mix with mayonnaise, salt, and pepper.",
+            "Spread on one slice of bread.",
+            "Top with second slice.",
+            "Cut and serve."
+        ]
+    },
+    {
+        "id": "simple_021",
+        "name": "Caprese Salad",
+        "category": "Salad",
+        "area": "Italian",
+        "image": "https://www.themealdb.com/images/media/meals/1529446352.jpg",
+        "source": "",
+        "youtube": "",
+        "ingredients": [
+            {"name": "tomato", "measure": "2"},
+            {"name": "mozzarella", "measure": "150g"},
+            {"name": "basil", "measure": "handful"},
+            {"name": "olive oil", "measure": "2 tbsp"},
+            {"name": "salt", "measure": "pinch"},
+        ],
+        "steps": [
+            "Slice tomatoes and mozzarella.",
+            "Arrange alternating on a plate.",
+            "Tuck basil leaves between slices.",
+            "Drizzle with olive oil.",
+            "Season with salt and serve."
+        ]
+    },
+    {
+        "id": "simple_022",
+        "name": "Simple Green Salad",
+        "category": "Salad",
+        "area": "American",
+        "image": "https://www.themealdb.com/images/media/meals/1529446352.jpg",
+        "source": "",
+        "youtube": "",
+        "ingredients": [
+            {"name": "lettuce", "measure": "1 head"},
+            {"name": "olive oil", "measure": "2 tbsp"},
+            {"name": "lemon juice", "measure": "1 tbsp"},
+            {"name": "salt", "measure": "pinch"},
+        ],
+        "steps": [
+            "Wash and tear lettuce into pieces.",
+            "Whisk olive oil, lemon juice, and salt.",
+            "Toss lettuce with dressing.",
+            "Serve immediately."
+        ]
+    },
+    {
+        "id": "simple_023",
+        "name": "Cucumber Salad",
+        "category": "Salad",
+        "area": "American",
+        "image": "https://www.themealdb.com/images/media/meals/1529446352.jpg",
+        "source": "",
+        "youtube": "",
+        "ingredients": [
+            {"name": "cucumber", "measure": "2"},
+            {"name": "yogurt", "measure": "1/2 cup"},
+            {"name": "garlic", "measure": "1 clove"},
+            {"name": "salt", "measure": "pinch"},
+            {"name": "dill", "measure": "1 tbsp"},
+        ],
+        "steps": [
+            "Slice cucumbers thinly.",
+            "Mix yogurt with minced garlic, salt, and dill.",
+            "Toss cucumbers with dressing.",
+            "Chill for 10 minutes before serving."
+        ]
+    },
+    {
+        "id": "simple_024",
+        "name": "Boiled Eggs",
+        "category": "Breakfast",
+        "area": "Universal",
+        "image": "https://www.themealdb.com/images/media/meals/1529446352.jpg",
+        "source": "",
+        "youtube": "",
+        "ingredients": [
+            {"name": "eggs", "measure": "4"},
+            {"name": "salt", "measure": "to taste"},
+        ],
+        "steps": [
+            "Place eggs in a pot, cover with cold water.",
+            "Bring to a boil over high heat.",
+            "For soft boiled: remove after 6 minutes.",
+            "For hard boiled: cook 10-12 minutes.",
+            "Transfer to ice water to stop cooking.",
+            "Peel and season with salt."
+        ]
+    },
+    {
+        "id": "simple_025",
+        "name": "French Toast",
+        "category": "Breakfast",
+        "area": "French",
+        "image": "https://www.themealdb.com/images/media/meals/1550441882.jpg",
+        "source": "",
+        "youtube": "",
+        "ingredients": [
+            {"name": "bread", "measure": "4 slices"},
+            {"name": "eggs", "measure": "2"},
+            {"name": "milk", "measure": "1/4 cup"},
+            {"name": "butter", "measure": "2 tbsp"},
+            {"name": "sugar", "measure": "1 tbsp"},
+        ],
+        "steps": [
+            "Whisk eggs, milk, and sugar together.",
+            "Heat butter in a pan over medium heat.",
+            "Dip bread slices in egg mixture.",
+            "Cook until golden brown on each side.",
+            "Serve with syrup or powdered sugar."
+        ]
+    },
+    {
+        "id": "simple_026",
+        "name": "Microwave Mug Omelette",
+        "category": "Breakfast",
+        "area": "American",
+        "image": "https://www.themealdb.com/images/media/meals/ustsqw1468250014.jpg",
+        "source": "",
+        "youtube": "",
+        "ingredients": [
+            {"name": "eggs", "measure": "2"},
+            {"name": "cheese", "measure": "2 tbsp"},
+            {"name": "milk", "measure": "1 tbsp"},
+            {"name": "salt", "measure": "pinch"},
+        ],
+        "steps": [
+            "Spray a mug with cooking spray.",
+            "Crack eggs into mug, add milk and salt.",
+            "Beat with a fork.",
+            "Microwave 1 minute, stir.",
+            "Microwave 30-60 more seconds until set.",
+            "Top with cheese and serve."
+        ]
+    },
+    {
+        "id": "simple_027",
+        "name": "Banana on Toast",
+        "category": "Breakfast",
+        "area": "American",
+        "image": "https://www.themealdb.com/images/media/meals/1550441882.jpg",
+        "source": "",
+        "youtube": "",
+        "ingredients": [
+            {"name": "bread", "measure": "2 slices"},
+            {"name": "banana", "measure": "1"},
+            {"name": "honey", "measure": "1 tbsp"},
+        ],
+        "steps": [
+            "Toast bread until golden.",
+            "Slice banana.",
+            "Arrange banana slices on toast.",
+            "Drizzle with honey.",
+            "Optional: sprinkle with cinnamon."
+        ]
+    },
+    {
+        "id": "simple_028",
+        "name": "Simple Rice Bowl",
+        "category": "Dinner",
+        "area": "Asian",
+        "image": "https://www.themealdb.com/images/media/meals/1529446352.jpg",
+        "source": "",
+        "youtube": "",
+        "ingredients": [
+            {"name": "rice", "measure": "1 cup"},
+            {"name": "eggs", "measure": "1"},
+            {"name": "soy sauce", "measure": "1 tbsp"},
+            {"name": "sesame oil", "measure": "1 tsp"},
+        ],
+        "steps": [
+            "Cook rice according to package directions.",
+            "Fry egg sunny-side up.",
+            "Place rice in bowl, top with egg.",
+            "Drizzle with soy sauce and sesame oil."
+        ]
+    },
+    {
+        "id": "simple_029",
+        "name": "Cheese Toast",
+        "category": "Snack",
+        "area": "British",
+        "image": "https://www.themealdb.com/images/media/meals/xutquv1505330523.jpg",
+        "source": "",
+        "youtube": "",
+        "ingredients": [
+            {"name": "bread", "measure": "2 slices"},
+            {"name": "cheese", "measure": "50g"},
+        ],
+        "steps": [
+            "Preheat broiler/grill.",
+            "Place bread on baking sheet.",
+            "Top with sliced or grated cheese.",
+            "Broil until cheese is melted and bubbly.",
+            "Serve hot."
+        ]
+    },
+    {
+        "id": "simple_030",
+        "name": "Honey Lemon Water",
+        "category": "Drink",
+        "area": "Universal",
+        "image": "https://www.themealdb.com/images/media/meals/1550441882.jpg",
+        "source": "",
+        "youtube": "",
+        "ingredients": [
+            {"name": "water", "measure": "1 cup"},
+            {"name": "lemon", "measure": "1/2"},
+            {"name": "honey", "measure": "1 tbsp"},
+        ],
+        "steps": [
+            "Heat water until warm (not boiling).",
+            "Squeeze lemon juice into water.",
+            "Stir in honey until dissolved.",
+            "Serve warm or over ice."
+        ]
+    },
+]
+
 INGREDIENT_EXTRACTION_PROMPT = """Analyze this image of food items or a fridge. 
 Extract and normalize all visible food ingredients.
 
@@ -29,14 +690,95 @@ Rules:
 - Return ONLY valid JSON, no markdown or explanation"""
 
 
+# Ingredient synonyms for better matching
+INGREDIENT_SYNONYMS = {
+    "egg": ["eggs", "egg"],
+    "eggs": ["eggs", "egg"],
+    "cheese": ["cheese", "cheddar", "mozzarella", "parmesan", "swiss"],
+    "bread": ["bread", "toast", "sliced bread", "white bread", "wheat bread"],
+    "milk": ["milk", "whole milk", "skim milk"],
+    "butter": ["butter", "unsalted butter", "salted butter"],
+    "chicken": ["chicken", "chicken breast", "chicken thigh", "chicken leg"],
+    "tomato": ["tomato", "tomatoes", "cherry tomatoes"],
+    "lettuce": ["lettuce", "romaine", "iceberg", "salad greens"],
+    "onion": ["onion", "onions", "yellow onion", "red onion"],
+    "garlic": ["garlic", "garlic cloves"],
+    "pasta": ["pasta", "spaghetti", "penne", "macaroni", "noodles"],
+    "rice": ["rice", "white rice", "brown rice", "cooked rice"],
+    "ham": ["ham", "sliced ham", "deli ham"],
+    "bacon": ["bacon", "bacon strips"],
+    "banana": ["banana", "bananas"],
+    "apple": ["apple", "apples"],
+    "yogurt": ["yogurt", "greek yogurt", "plain yogurt"],
+    "oil": ["oil", "olive oil", "vegetable oil", "cooking oil"],
+}
+
+
 def normalize_ingredient(name):
     """Normalize ingredient name for better matching."""
     name = name.lower().strip()
-    # Remove common prefixes/suffixes
-    remove_words = ['fresh', 'raw', 'cooked', 'dried', 'frozen', 'canned', 'sliced', 'diced', 'chopped', 'minced', 'whole', 'large', 'small', 'medium']
+    remove_words = ['fresh', 'raw', 'cooked', 'dried', 'frozen', 'canned', 'sliced', 'diced', 'chopped', 'minced', 'whole', 'large', 'small', 'medium', 'organic']
     words = name.split()
     words = [w for w in words if w not in remove_words]
     return ' '.join(words) if words else name
+
+
+def ingredients_match(recipe_ing, user_ingredients):
+    """Check if a recipe ingredient matches any user ingredient."""
+    recipe_ing_norm = normalize_ingredient(recipe_ing)
+    recipe_words = set(recipe_ing_norm.split())
+    
+    for user_ing in user_ingredients:
+        user_norm = normalize_ingredient(user_ing['name'])
+        user_words = set(user_norm.split())
+        
+        # Direct match
+        if recipe_ing_norm == user_norm:
+            return True
+        
+        # Word overlap
+        if recipe_words & user_words:
+            return True
+        
+        # Check synonyms
+        for key, synonyms in INGREDIENT_SYNONYMS.items():
+            if recipe_ing_norm in synonyms or any(w in synonyms for w in recipe_words):
+                if user_norm in synonyms or any(w in synonyms for w in user_words):
+                    return True
+    
+    return False
+
+
+def calculate_match(recipe_ingredients, user_ingredients):
+    """Calculate how well a recipe matches user's ingredients."""
+    matched = []
+    missing = []
+    
+    # Common pantry items that don't count as "missing"
+    pantry_items = {'salt', 'pepper', 'water', 'oil', 'olive oil', 'sugar', 'flour'}
+    
+    for ing in recipe_ingredients:
+        ing_name = ing['name'] if isinstance(ing, dict) else ing
+        ing_norm = normalize_ingredient(ing_name)
+        
+        if ingredients_match(ing_name, user_ingredients):
+            matched.append(ing_name)
+        elif ing_norm in pantry_items:
+            matched.append(ing_name)  # Assume pantry items are available
+        else:
+            missing.append(ing_name)
+    
+    total = len(recipe_ingredients)
+    match_count = len(matched)
+    match_percent = round((match_count / total) * 100) if total > 0 else 0
+    
+    return {
+        'match_percent': match_percent,
+        'matched_count': match_count,
+        'missing_count': len(missing),
+        'matched_ingredients': matched,
+        'missing_ingredients': missing
+    }
 
 
 def extract_meal_ingredients(meal):
@@ -59,54 +801,16 @@ def extract_meal_steps(meal):
     if not instructions:
         return []
     
-    # Split by common delimiters
     steps = re.split(r'\r\n|\n\n|\. (?=[A-Z])', instructions)
     steps = [s.strip() for s in steps if s.strip() and len(s.strip()) > 10]
     
-    # Number the steps if not already numbered
     result = []
-    for i, step in enumerate(steps):
-        # Remove existing numbers
+    for step in steps:
         step = re.sub(r'^[\d]+[\.\)]\s*', '', step)
         if step:
             result.append(step)
     
-    return result[:10]  # Limit to 10 steps
-
-
-def calculate_match(recipe_ingredients, user_ingredients):
-    """Calculate how well a recipe matches user's ingredients."""
-    user_ing_normalized = set(normalize_ingredient(i['name']) for i in user_ingredients)
-    user_ing_words = set()
-    for i in user_ingredients:
-        user_ing_words.update(normalize_ingredient(i['name']).split())
-    
-    matched = []
-    missing = []
-    
-    for ing in recipe_ingredients:
-        ing_name = normalize_ingredient(ing['name'])
-        ing_words = set(ing_name.split())
-        
-        # Check for exact or partial match
-        if ing_name in user_ing_normalized:
-            matched.append(ing['name'])
-        elif ing_words & user_ing_words:  # Word overlap
-            matched.append(ing['name'])
-        else:
-            missing.append(ing['name'])
-    
-    total = len(recipe_ingredients)
-    match_count = len(matched)
-    match_percent = round((match_count / total) * 100) if total > 0 else 0
-    
-    return {
-        'match_percent': match_percent,
-        'matched_count': match_count,
-        'missing_count': len(missing),
-        'matched_ingredients': matched,
-        'missing_ingredients': missing
-    }
+    return result[:12]
 
 
 def fetch_recipes_by_ingredient(ingredient):
@@ -132,6 +836,22 @@ def fetch_meal_details(meal_id):
     except Exception as e:
         print(f"Error fetching meal {meal_id}: {e}")
         return None
+
+
+def get_simple_recipes_matches(user_ingredients):
+    """Get matching simple recipes from built-in database."""
+    results = []
+    
+    for recipe in SIMPLE_RECIPES:
+        match_info = calculate_match(recipe['ingredients'], user_ingredients)
+        
+        # Include if at least 30% match
+        if match_info['match_percent'] >= 30:
+            recipe_copy = recipe.copy()
+            recipe_copy.update(match_info)
+            results.append(recipe_copy)
+    
+    return results
 
 
 @app.route('/analyze', methods=['POST'])
@@ -170,7 +890,6 @@ def analyze_image():
         
         result_text = response.choices[0].message.content
         
-        # Get token usage
         usage = response.usage
         token_info = {}
         if usage:
@@ -185,7 +904,6 @@ def analyze_image():
             print(f"Total tokens:  {usage.total_tokens}")
             print(f"==========================================\n")
         
-        # Parse JSON
         json_match = re.search(r'\{[\s\S]*\}', result_text)
         if json_match:
             result_text = json_match.group()
@@ -213,7 +931,7 @@ def analyze_image():
 
 @app.route('/search-recipes', methods=['POST'])
 def search_recipes():
-    """Search for real recipes based on user's ingredients."""
+    """Search for recipes from multiple sources based on ingredients."""
     data = request.json
     ingredients = data.get('ingredients', [])
     
@@ -221,25 +939,36 @@ def search_recipes():
         return jsonify({'error': 'Ingredients are required'}), 400
     
     try:
-        # Fetch recipes for each ingredient
-        all_meal_ids = defaultdict(int)
+        all_recipes = []
+        seen_ids = set()
         
-        # Search using top ingredients (limit to avoid too many API calls)
-        search_ingredients = [i['name'] for i in ingredients[:8]]
+        # 1. Get simple recipes from built-in database
+        simple_matches = get_simple_recipes_matches(ingredients)
+        for recipe in simple_matches:
+            all_recipes.append(recipe)
+            seen_ids.add(recipe['id'])
+        
+        print(f"Found {len(simple_matches)} simple recipe matches")
+        
+        # 2. Fetch from TheMealDB
+        all_meal_ids = defaultdict(int)
+        search_ingredients = [i['name'] for i in ingredients[:10]]
         
         for ing in search_ingredients:
-            # Use the main word of the ingredient
             search_term = normalize_ingredient(ing).split()[0]
             meals = fetch_recipes_by_ingredient(search_term)
             for meal in meals:
                 all_meal_ids[meal['idMeal']] += 1
         
-        # Sort by frequency (recipes that match more ingredients)
+        # Sort by frequency and get top matches
         sorted_meal_ids = sorted(all_meal_ids.keys(), key=lambda x: all_meal_ids[x], reverse=True)
         
-        # Fetch details for top recipes
-        recipes = []
-        for meal_id in sorted_meal_ids[:15]:  # Limit to 15 recipes
+        print(f"Found {len(sorted_meal_ids)} TheMealDB recipes")
+        
+        for meal_id in sorted_meal_ids[:20]:
+            if meal_id in seen_ids:
+                continue
+                
             meal = fetch_meal_details(meal_id)
             if not meal:
                 continue
@@ -247,8 +976,8 @@ def search_recipes():
             recipe_ingredients = extract_meal_ingredients(meal)
             match_info = calculate_match(recipe_ingredients, ingredients)
             
-            # Skip recipes with very low match
-            if match_info['match_percent'] < 10:
+            # Skip recipes with very low match or too many missing ingredients
+            if match_info['match_percent'] < 20 or match_info['missing_count'] > 8:
                 continue
             
             recipe = {
@@ -261,36 +990,44 @@ def search_recipes():
                 'youtube': meal.get('strYoutube', ''),
                 'ingredients': recipe_ingredients,
                 'steps': extract_meal_steps(meal),
-                'match_percent': match_info['match_percent'],
-                'matched_count': match_info['matched_count'],
-                'missing_count': match_info['missing_count'],
-                'matched_ingredients': match_info['matched_ingredients'],
-                'missing_ingredients': match_info['missing_ingredients'],
+                **match_info
             }
-            recipes.append(recipe)
+            all_recipes.append(recipe)
+            seen_ids.add(meal_id)
         
-        # Sort by match percentage
-        recipes.sort(key=lambda x: x['match_percent'], reverse=True)
+        # Sort by: 1) fewer missing ingredients, 2) higher match percent
+        all_recipes.sort(key=lambda x: (x['missing_count'], -x['match_percent']))
         
         # Categorize recipes
         categorized = {
+            'Quick & Easy': [],
             'Best Matches': [],
-            'Good Matches': [],
-            'Partial Matches': []
+            'Good Options': [],
+            'More Ideas': []
         }
         
-        for recipe in recipes:
-            if recipe['match_percent'] >= 60:
+        for recipe in all_recipes:
+            # Quick & Easy: simple recipes with few ingredients
+            if recipe['id'].startswith('simple_') and recipe['missing_count'] <= 2:
+                categorized['Quick & Easy'].append(recipe)
+            elif recipe['missing_count'] <= 2:
                 categorized['Best Matches'].append(recipe)
-            elif recipe['match_percent'] >= 40:
-                categorized['Good Matches'].append(recipe)
+            elif recipe['missing_count'] <= 4:
+                categorized['Good Options'].append(recipe)
             else:
-                categorized['Partial Matches'].append(recipe)
+                categorized['More Ideas'].append(recipe)
+        
+        # Limit each category
+        for key in categorized:
+            categorized[key] = categorized[key][:8]
+        
+        # Remove empty categories
+        categorized = {k: v for k, v in categorized.items() if v}
         
         return jsonify({
-            'recipes': recipes,
+            'recipes': all_recipes[:30],
             'categorized': categorized,
-            'total': len(recipes)
+            'total': len(all_recipes)
         })
     
     except Exception as e:
@@ -304,6 +1041,12 @@ def search_recipes():
 def get_recipe(meal_id):
     """Get full recipe details by ID."""
     try:
+        # Check simple recipes first
+        for recipe in SIMPLE_RECIPES:
+            if recipe['id'] == meal_id:
+                return jsonify(recipe)
+        
+        # Fetch from TheMealDB
         meal = fetch_meal_details(meal_id)
         if not meal:
             return jsonify({'error': 'Recipe not found'}), 404

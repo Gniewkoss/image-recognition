@@ -162,17 +162,28 @@ const RecipeCard = ({ recipe, onPress, onFavorite, isFavorited, compact }) => {
         <View style={styles.recipeCardContent}>
           <Text style={styles.recipeCardTitle} numberOfLines={2}>{recipe.name}</Text>
           <View style={styles.recipeCardMeta}>
-            {recipe.category && (
+            {recipe.id?.startsWith('simple_') && (
+              <View style={[styles.metaItem, styles.quickBadge]}>
+                <Ionicons name="flash" size={12} color={COLORS.warning} />
+                <Text style={[styles.metaText, { color: COLORS.warning, fontWeight: '600' }]}>Quick</Text>
+              </View>
+            )}
+            {recipe.category && !recipe.id?.startsWith('simple_') && (
               <View style={styles.metaItem}>
                 <Ionicons name="pricetag-outline" size={12} color={COLORS.textSecondary} />
                 <Text style={styles.metaText}>{recipe.category}</Text>
               </View>
             )}
-            {recipe.missing_count > 0 && (
+            {recipe.missing_count === 0 ? (
+              <View style={[styles.metaItem, styles.readyBadge]}>
+                <Ionicons name="checkmark-circle" size={12} color={COLORS.success} />
+                <Text style={[styles.metaText, { color: COLORS.success }]}>Ready!</Text>
+              </View>
+            ) : recipe.missing_count > 0 && (
               <View style={[styles.metaItem, styles.missingBadge]}>
                 <Ionicons name="cart-outline" size={12} color={COLORS.warning} />
                 <Text style={[styles.metaText, { color: COLORS.warning }]}>
-                  +{recipe.missing_count} items
+                  Need {recipe.missing_count}
                 </Text>
               </View>
             )}
@@ -506,15 +517,22 @@ function HomeTab({ navigation }) {
 
         {!scanning && !searchingRecipes && Object.entries(categorizedRecipes).map(([category, categoryRecipes]) => {
           if (!categoryRecipes || categoryRecipes.length === 0) return null;
+          
+          const getCategoryIcon = (cat) => {
+            switch(cat) {
+              case 'Quick & Easy': return { icon: 'flash', color: COLORS.warning };
+              case 'Best Matches': return { icon: 'star', color: COLORS.success };
+              case 'Good Options': return { icon: 'thumbs-up', color: COLORS.primary };
+              default: return { icon: 'bulb-outline', color: COLORS.textSecondary };
+            }
+          };
+          const { icon, color } = getCategoryIcon(category);
+          
           return (
             <View key={category} style={styles.section}>
               <View style={styles.sectionHeader}>
                 <View style={styles.sectionTitleRow}>
-                  <Ionicons 
-                    name={category === 'Best Matches' ? 'star' : category === 'Good Matches' ? 'thumbs-up' : 'list'} 
-                    size={18} 
-                    color={category === 'Best Matches' ? COLORS.warning : COLORS.primary} 
-                  />
+                  <Ionicons name={icon} size={18} color={color} />
                   <Text style={styles.sectionTitle}>{category}</Text>
                 </View>
                 <View style={styles.countBadge}>
@@ -1524,6 +1542,18 @@ const styles = StyleSheet.create({
   },
   missingBadge: {
     backgroundColor: COLORS.warning + "15",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  quickBadge: {
+    backgroundColor: COLORS.warning + "15",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  readyBadge: {
+    backgroundColor: COLORS.success + "15",
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 6,
