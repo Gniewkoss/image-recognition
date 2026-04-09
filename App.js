@@ -13,6 +13,7 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Share,
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { NavigationContainer } from "@react-navigation/native";
@@ -23,6 +24,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons, MaterialCommunityIcons, Feather } from "@expo/vector-icons";
 
 const API_KEY_STORAGE = "@openai_api_key";
+const FAVORITES_STORAGE = "@favorite_recipes";
+const HISTORY_STORAGE = "@scan_history";
 const SERVER_URL = "https://undecompounded-multicrystalline-natasha.ngrok-free.dev";
 
 const Stack = createNativeStackNavigator();
@@ -200,12 +203,26 @@ function HomeScreen({ navigation }) {
           </View>
           <Text style={styles.title}>FoodLens</Text>
         </View>
-        <TouchableOpacity
-          onPress={openApiKeySettings}
-          style={styles.settingsButton}
-        >
-          <Feather name="settings" size={22} color="#1a1a2e" />
-        </TouchableOpacity>
+        <View style={styles.headerButtons}>
+          <TouchableOpacity
+            onPress={() => navigation.navigate("History")}
+            style={styles.headerButton}
+          >
+            <Ionicons name="time-outline" size={22} color="#1a1a2e" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => navigation.navigate("Favorites")}
+            style={styles.headerButton}
+          >
+            <Ionicons name="heart-outline" size={22} color="#ef4444" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={openApiKeySettings}
+            style={styles.headerButton}
+          >
+            <Feather name="settings" size={22} color="#1a1a2e" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.statusRow}>
@@ -372,6 +389,85 @@ function ResultScreen({ route, navigation }) {
   const [newProductQuantity, setNewProductQuantity] = useState("");
   const [refreshingRecipes, setRefreshingRecipes] = useState(false);
   const [productsChanged, setProductsChanged] = useState(false);
+  const [favoriteRecipes, setFavoriteRecipes] = useState([]);
+
+  useEffect(() => {
+    loadFavorites();
+    saveToHistory();
+  }, []);
+
+  const loadFavorites = async () => {
+    try {
+      const saved = await AsyncStorage.getItem(FAVORITES_STORAGE);
+      if (saved) {
+        setFavoriteRecipes(JSON.parse(saved));
+      }
+    } catch (e) {
+      console.error("Failed to load favorites:", e);
+    }
+  };
+
+  const saveToHistory = async () => {
+    if (!hasStructuredData) return;
+    try {
+      const saved = await AsyncStorage.getItem(HISTORY_STORAGE);
+      const history = saved ? JSON.parse(saved) : [];
+      const newEntry = {
+        id: Date.now().toString(),
+        date: new Date().toISOString(),
+        imageUri,
+        products: result.products,
+        recipes: result.recipes,
+      };
+      const updatedHistory = [newEntry, ...history].slice(0, 30);
+      await AsyncStorage.setItem(HISTORY_STORAGE, JSON.stringify(updatedHistory));
+    } catch (e) {
+      console.error("Failed to save to history:", e);
+    }
+  };
+
+  const isRecipeFavorited = (recipe) => {
+    return favoriteRecipes.some(fav => fav.name === recipe.name);
+  };
+
+  const toggleFavorite = async (recipe) => {
+    try {
+      let updated;
+      if (isRecipeFavorited(recipe)) {
+        updated = favoriteRecipes.filter(fav => fav.name !== recipe.name);
+      } else {
+        const recipeWithDate = { ...recipe, savedAt: new Date().toISOString() };
+        updated = [recipeWithDate, ...favoriteRecipes];
+      }
+      setFavoriteRecipes(updated);
+      await AsyncStorage.setItem(FAVORITES_STORAGE, JSON.stringify(updated));
+    } catch (e) {
+      console.error("Failed to update favorites:", e);
+    }
+  };
+
+  const exportShoppingList = async () => {
+    const additionalIngredients = new Set();
+    recipes.forEach(recipe => {
+      recipe.additional_ingredients?.forEach(ing => additionalIngredients.add(ing));
+    });
+    
+    if (additionalIngredients.size === 0) {
+      Alert.alert("No Items", "No additional ingredients needed for these recipes.");
+      return;
+    }
+    
+    const listText = `🛒 Shopping List from FoodLens\n\n${[...additionalIngredients].map(item => `☐ ${item}`).join('\n')}\n\nGenerated on ${new Date().toLocaleDateString()}`;
+    
+    try {
+      await Share.share({
+        message: listText,
+        title: "Shopping List",
+      });
+    } catch (e) {
+      console.error("Failed to share:", e);
+    }
+  };
   
   const addProduct = () => {
     if (!newProductName.trim()) return;
@@ -462,6 +558,7 @@ function ResultScreen({ route, navigation }) {
     const isExpanded = expandedRecipe === index;
     const categoryConfig =
       CATEGORY_CONFIG[recipe.category] || CATEGORY_CONFIG["All"];
+    const isFavorited = isRecipeFavorited(recipe);
 
     return (
       <TouchableOpacity
@@ -505,6 +602,19 @@ function ResultScreen({ route, navigation }) {
                 <Text style={styles.metaText}>{recipe.time}</Text>
               </View>
             )}
+            <TouchableOpacity
+              style={styles.favoriteButton}
+              onPress={(e) => {
+                e.stopPropagation();
+                toggleFavorite(recipe);
+              }}
+            >
+              <Ionicons
+                name={isFavorited ? "heart" : "heart-outline"}
+                size={20}
+                color={isFavorited ? "#ef4444" : "#94a3b8"}
+              />
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -591,7 +701,12 @@ function ResultScreen({ route, navigation }) {
           <Ionicons name="arrow-back" size={24} color="#1a1a2e" />
         </TouchableOpacity>
         <Text style={styles.resultHeaderTitle}>Analysis Results</Text>
-        <View style={styles.backButtonPlaceholder} />
+        <TouchableOpacity
+          onPress={exportShoppingList}
+          style={styles.shoppingListButton}
+        >
+          <Ionicons name="cart-outline" size={22} color="#1a1a2e" />
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -638,7 +753,7 @@ function ResultScreen({ route, navigation }) {
                     <View style={styles.productIcon}>
                       <Ionicons
                         name="nutrition-outline"
-                        size={16}
+                        size={18}
                         color="#64748b"
                       />
                     </View>
@@ -646,12 +761,10 @@ function ResultScreen({ route, navigation }) {
                       style={styles.productInfo}
                       onPress={() => startEditProduct(index)}
                     >
-                      <Text style={styles.productName} numberOfLines={1}>{item.name}</Text>
+                      <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
                       {item.quantity && (
                         <View style={styles.quantityBadge}>
-                          <Text style={styles.productQuantity}>
-                            {item.quantity}
-                          </Text>
+                          <Text style={styles.productQuantity}>{item.quantity}</Text>
                         </View>
                       )}
                     </TouchableOpacity>
@@ -660,13 +773,13 @@ function ResultScreen({ route, navigation }) {
                         style={styles.productEditButton}
                         onPress={() => startEditProduct(index)}
                       >
-                        <Feather name="edit-2" size={14} color="#6366f1" />
+                        <Feather name="edit-2" size={16} color="#6366f1" />
                       </TouchableOpacity>
                       <TouchableOpacity 
                         style={styles.productDeleteButton}
                         onPress={() => deleteProduct(index)}
                       >
-                        <Feather name="trash-2" size={14} color="#ef4444" />
+                        <Feather name="trash-2" size={16} color="#ef4444" />
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -937,6 +1050,543 @@ function ResultScreen({ route, navigation }) {
   );
 }
 
+function HistoryScreen({ navigation }) {
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadHistory();
+    const unsubscribe = navigation.addListener('focus', loadHistory);
+    return unsubscribe;
+  }, [navigation]);
+
+  const loadHistory = async () => {
+    try {
+      const saved = await AsyncStorage.getItem(HISTORY_STORAGE);
+      if (saved) {
+        setHistory(JSON.parse(saved));
+      }
+    } catch (e) {
+      console.error("Failed to load history:", e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const clearHistory = async () => {
+    Alert.alert(
+      "Clear History",
+      "Are you sure you want to delete all scan history?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            await AsyncStorage.removeItem(HISTORY_STORAGE);
+            setHistory([]);
+          },
+        },
+      ]
+    );
+  };
+
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString() + " " + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const viewHistoryItem = (item) => {
+    navigation.navigate("HistoryDetail", { historyItem: item });
+  };
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <StatusBar style="dark" />
+      <View style={styles.resultHeader}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backButton}
+        >
+          <Ionicons name="arrow-back" size={24} color="#1a1a2e" />
+        </TouchableOpacity>
+        <Text style={styles.resultHeaderTitle}>Scan History</Text>
+        <TouchableOpacity onPress={clearHistory} style={styles.backButton}>
+          <Ionicons name="trash-outline" size={22} color="#ef4444" />
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.resultScrollContent}>
+        {loading ? (
+          <ActivityIndicator size="large" color="#6366f1" style={{ marginTop: 40 }} />
+        ) : history.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="time-outline" size={64} color="#e2e8f0" />
+            <Text style={styles.emptyStateTitle}>No Scan History</Text>
+            <Text style={styles.emptyStateText}>Your scanned items will appear here</Text>
+          </View>
+        ) : (
+          history.map((item, index) => (
+            <TouchableOpacity 
+              key={item.id || index} 
+              style={styles.historyCard}
+              onPress={() => viewHistoryItem(item)}
+              activeOpacity={0.7}
+            >
+              <Image source={{ uri: item.imageUri }} style={styles.historyImage} />
+              <View style={styles.historyInfo}>
+                <Text style={styles.historyDate}>{formatDate(item.date)}</Text>
+                <Text style={styles.historyStats}>
+                  {item.products?.length || 0} items • {item.recipes?.length || 0} recipes
+                </Text>
+                <View style={styles.historyProducts}>
+                  {item.products?.slice(0, 3).map((p, i) => (
+                    <Text key={i} style={styles.historyProductTag}>{p.name}</Text>
+                  ))}
+                  {item.products?.length > 3 && (
+                    <Text style={styles.historyMoreTag}>+{item.products.length - 3}</Text>
+                  )}
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#94a3b8" />
+            </TouchableOpacity>
+          ))
+        )}
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+function HistoryDetailScreen({ route, navigation }) {
+  const { historyItem } = route.params;
+  const [selectedCategory, setSelectedCategory] = useState("All");
+  const [expandedRecipe, setExpandedRecipe] = useState(null);
+  const [favoriteRecipes, setFavoriteRecipes] = useState([]);
+
+  const products = historyItem.products || [];
+  const recipes = historyItem.recipes || [];
+
+  useEffect(() => {
+    loadFavorites();
+  }, []);
+
+  const loadFavorites = async () => {
+    try {
+      const saved = await AsyncStorage.getItem(FAVORITES_STORAGE);
+      if (saved) {
+        setFavoriteRecipes(JSON.parse(saved));
+      }
+    } catch (e) {
+      console.error("Failed to load favorites:", e);
+    }
+  };
+
+  const isRecipeFavorited = (recipe) => {
+    return favoriteRecipes.some(fav => fav.name === recipe.name);
+  };
+
+  const toggleFavorite = async (recipe) => {
+    try {
+      let updated;
+      if (isRecipeFavorited(recipe)) {
+        updated = favoriteRecipes.filter(fav => fav.name !== recipe.name);
+      } else {
+        const recipeWithDate = { ...recipe, savedAt: new Date().toISOString() };
+        updated = [recipeWithDate, ...favoriteRecipes];
+      }
+      setFavoriteRecipes(updated);
+      await AsyncStorage.setItem(FAVORITES_STORAGE, JSON.stringify(updated));
+    } catch (e) {
+      console.error("Failed to update favorites:", e);
+    }
+  };
+
+  const exportShoppingList = async () => {
+    const additionalIngredients = new Set();
+    recipes.forEach(recipe => {
+      recipe.additional_ingredients?.forEach(ing => additionalIngredients.add(ing));
+    });
+    
+    if (additionalIngredients.size === 0) {
+      Alert.alert("No Items", "No additional ingredients needed for these recipes.");
+      return;
+    }
+    
+    const listText = `🛒 Shopping List from FoodLens\n\n${[...additionalIngredients].map(item => `☐ ${item}`).join('\n')}\n\nGenerated on ${new Date().toLocaleDateString()}`;
+    
+    try {
+      await Share.share({
+        message: listText,
+        title: "Shopping List",
+      });
+    } catch (e) {
+      console.error("Failed to share:", e);
+    }
+  };
+
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString() + " at " + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const categories = ["All", ...new Set(recipes.map((r) => r.category))];
+  const filteredRecipes = selectedCategory === "All" 
+    ? recipes 
+    : recipes.filter((r) => r.category === selectedCategory);
+
+  const renderRecipeCard = (recipe, index) => {
+    const isExpanded = expandedRecipe === index;
+    const categoryConfig = CATEGORY_CONFIG[recipe.category] || CATEGORY_CONFIG["All"];
+    const isFavorited = isRecipeFavorited(recipe);
+
+    return (
+      <TouchableOpacity
+        key={index}
+        style={[styles.recipeCard, isExpanded && styles.recipeCardExpanded]}
+        onPress={() => setExpandedRecipe(isExpanded ? null : index)}
+        activeOpacity={0.7}
+      >
+        <View style={styles.recipeHeader}>
+          <View style={[styles.categoryBadge, { backgroundColor: `${categoryConfig.color}15` }]}>
+            <Ionicons name={categoryConfig.icon} size={14} color={categoryConfig.color} />
+            <Text style={[styles.categoryText, { color: categoryConfig.color }]}>{recipe.category}</Text>
+          </View>
+          <View style={styles.recipeMetaRow}>
+            {recipe.difficulty && (
+              <View style={styles.metaBadge}>
+                <Ionicons name="speedometer-outline" size={12} color="#64748b" />
+                <Text style={styles.metaText}>{recipe.difficulty}</Text>
+              </View>
+            )}
+            {recipe.time && (
+              <View style={styles.metaBadge}>
+                <Ionicons name="time-outline" size={12} color="#64748b" />
+                <Text style={styles.metaText}>{recipe.time}</Text>
+              </View>
+            )}
+            <TouchableOpacity
+              style={styles.favoriteButton}
+              onPress={(e) => {
+                e.stopPropagation();
+                toggleFavorite(recipe);
+              }}
+            >
+              <Ionicons
+                name={isFavorited ? "heart" : "heart-outline"}
+                size={20}
+                color={isFavorited ? "#ef4444" : "#94a3b8"}
+              />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <Text style={styles.recipeName}>{recipe.name}</Text>
+        <Text style={styles.recipeDescription} numberOfLines={isExpanded ? undefined : 2}>
+          {recipe.description}
+        </Text>
+
+        {isExpanded && (
+          <View style={styles.recipeDetails}>
+            <View style={styles.ingredientsSection}>
+              <View style={styles.detailHeader}>
+                <Ionicons name="checkmark-circle" size={18} color="#10b981" />
+                <Text style={styles.detailTitle}>Available Ingredients</Text>
+              </View>
+              <View style={styles.ingredientTags}>
+                {recipe.ingredients_from_image?.map((ing, i) => (
+                  <View key={i} style={styles.ingredientTag}>
+                    <Text style={styles.ingredientTagText}>{ing}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+
+            {recipe.additional_ingredients?.length > 0 && (
+              <View style={styles.ingredientsSection}>
+                <View style={styles.detailHeader}>
+                  <Ionicons name="cart-outline" size={18} color="#f59e0b" />
+                  <Text style={styles.detailTitle}>Shopping List</Text>
+                </View>
+                <View style={styles.ingredientTags}>
+                  {recipe.additional_ingredients.map((ing, i) => (
+                    <View key={i} style={[styles.ingredientTag, styles.additionalTag]}>
+                      <Text style={styles.additionalTagText}>{ing}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            <View style={styles.stepsSection}>
+              <View style={styles.detailHeader}>
+                <Ionicons name="list" size={18} color="#6366f1" />
+                <Text style={styles.detailTitle}>Instructions</Text>
+              </View>
+              {recipe.steps?.map((step, i) => (
+                <View key={i} style={styles.stepRow}>
+                  <View style={styles.stepNumber}>
+                    <Text style={styles.stepNumberText}>{i + 1}</Text>
+                  </View>
+                  <Text style={styles.stepText}>{step}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
+        <View style={styles.expandRow}>
+          <Ionicons name={isExpanded ? "chevron-up" : "chevron-down"} size={18} color="#94a3b8" />
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <StatusBar style="dark" />
+
+      <View style={styles.resultHeader}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={24} color="#1a1a2e" />
+        </TouchableOpacity>
+        <Text style={styles.resultHeaderTitle}>Scan Details</Text>
+        <TouchableOpacity onPress={exportShoppingList} style={styles.shoppingListButton}>
+          <Ionicons name="cart-outline" size={22} color="#1a1a2e" />
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.resultScrollContent}>
+        <View style={styles.miniImageContainer}>
+          <Image source={{ uri: historyItem.imageUri }} style={styles.miniImage} />
+          <View style={styles.imageOverlay}>
+            <View style={styles.imageOverlayContent}>
+              <Ionicons name="time-outline" size={16} color="#fff" />
+              <Text style={styles.imageOverlayText}>{formatDate(historyItem.date)}</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionIconContainer}>
+              <MaterialCommunityIcons name="fridge-outline" size={20} color="#10b981" />
+            </View>
+            <Text style={styles.sectionHeaderTitle}>Detected Items</Text>
+            <View style={styles.countBadge}>
+              <Text style={styles.countText}>{products.length}</Text>
+            </View>
+          </View>
+
+          <View style={styles.productsList}>
+            {products.map((item, index) => (
+              <View key={index} style={styles.productItem}>
+                <View style={styles.productIcon}>
+                  <Ionicons name="nutrition-outline" size={18} color="#64748b" />
+                </View>
+                <View style={styles.productInfo}>
+                  <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
+                  {item.quantity && (
+                    <View style={styles.quantityBadge}>
+                      <Text style={styles.productQuantity}>{item.quantity}</Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {recipes.length > 0 && (
+          <>
+            <View style={styles.filterSection}>
+              <Text style={styles.filterTitle}>Categories</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
+                {categories.map((cat) => {
+                  const isSelected = selectedCategory === cat;
+                  const catConfig = CATEGORY_CONFIG[cat] || CATEGORY_CONFIG["All"];
+                  return (
+                    <TouchableOpacity
+                      key={cat}
+                      style={[
+                        styles.filterChip,
+                        isSelected && { backgroundColor: catConfig.color, borderColor: catConfig.color },
+                      ]}
+                      onPress={() => setSelectedCategory(cat)}
+                    >
+                      <Ionicons name={catConfig.icon} size={16} color={isSelected ? "#fff" : catConfig.color} />
+                      <Text style={[styles.filterChipText, isSelected && { color: "#fff" }]}>{cat}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+
+            <View style={styles.recipesSection}>
+              <View style={styles.sectionHeader}>
+                <View style={[styles.sectionIconContainer, { backgroundColor: "#fef3c7" }]}>
+                  <Ionicons name="restaurant-outline" size={20} color="#f59e0b" />
+                </View>
+                <Text style={styles.sectionHeaderTitle}>Recipe Suggestions</Text>
+                <View style={styles.countBadge}>
+                  <Text style={styles.countText}>{filteredRecipes.length}</Text>
+                </View>
+              </View>
+
+              {filteredRecipes.map((recipe, index) => renderRecipeCard(recipe, index))}
+            </View>
+          </>
+        )}
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+function FavoritesScreen({ navigation }) {
+  const [favorites, setFavorites] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [expandedRecipe, setExpandedRecipe] = useState(null);
+
+  useEffect(() => {
+    loadFavorites();
+    const unsubscribe = navigation.addListener('focus', loadFavorites);
+    return unsubscribe;
+  }, [navigation]);
+
+  const loadFavorites = async () => {
+    try {
+      const saved = await AsyncStorage.getItem(FAVORITES_STORAGE);
+      if (saved) {
+        setFavorites(JSON.parse(saved));
+      }
+    } catch (e) {
+      console.error("Failed to load favorites:", e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const removeFavorite = async (recipeName) => {
+    const updated = favorites.filter(fav => fav.name !== recipeName);
+    setFavorites(updated);
+    await AsyncStorage.setItem(FAVORITES_STORAGE, JSON.stringify(updated));
+  };
+
+  const exportFavorites = async () => {
+    if (favorites.length === 0) {
+      Alert.alert("No Favorites", "Save some recipes first!");
+      return;
+    }
+    const text = favorites.map(r => `📖 ${r.name}\n${r.description || ''}\n\nIngredients: ${r.ingredients_from_image?.join(', ') || 'N/A'}\n\nSteps:\n${r.steps?.map((s, i) => `${i+1}. ${s}`).join('\n') || 'N/A'}`).join('\n\n---\n\n');
+    try {
+      await Share.share({ message: `My Favorite Recipes\n\n${text}`, title: "Favorite Recipes" });
+    } catch (e) {
+      console.error("Failed to share:", e);
+    }
+  };
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <StatusBar style="dark" />
+      <View style={styles.resultHeader}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backButton}
+        >
+          <Ionicons name="arrow-back" size={24} color="#1a1a2e" />
+        </TouchableOpacity>
+        <Text style={styles.resultHeaderTitle}>Favorite Recipes</Text>
+        <TouchableOpacity onPress={exportFavorites} style={styles.backButton}>
+          <Ionicons name="share-outline" size={22} color="#6366f1" />
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.resultScrollContent}>
+        {loading ? (
+          <ActivityIndicator size="large" color="#6366f1" style={{ marginTop: 40 }} />
+        ) : favorites.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="heart-outline" size={64} color="#e2e8f0" />
+            <Text style={styles.emptyStateTitle}>No Favorites Yet</Text>
+            <Text style={styles.emptyStateText}>Tap the heart icon on recipes to save them</Text>
+          </View>
+        ) : (
+          favorites.map((recipe, index) => {
+            const isExpanded = expandedRecipe === index;
+            const categoryConfig = CATEGORY_CONFIG[recipe.category] || CATEGORY_CONFIG["All"];
+            
+            return (
+              <TouchableOpacity
+                key={index}
+                style={[styles.recipeCard, isExpanded && styles.recipeCardExpanded]}
+                onPress={() => setExpandedRecipe(isExpanded ? null : index)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.recipeHeader}>
+                  <View style={[styles.categoryBadge, { backgroundColor: `${categoryConfig.color}15` }]}>
+                    <Ionicons name={categoryConfig.icon} size={14} color={categoryConfig.color} />
+                    <Text style={[styles.categoryText, { color: categoryConfig.color }]}>{recipe.category}</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.favoriteButton}
+                    onPress={() => removeFavorite(recipe.name)}
+                  >
+                    <Ionicons name="heart" size={20} color="#ef4444" />
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={styles.recipeName}>{recipe.name}</Text>
+                <Text style={styles.recipeDescription} numberOfLines={isExpanded ? undefined : 2}>
+                  {recipe.description}
+                </Text>
+
+                {isExpanded && (
+                  <View style={styles.recipeDetails}>
+                    {recipe.ingredients_from_image?.length > 0 && (
+                      <View style={styles.ingredientsSection}>
+                        <View style={styles.detailHeader}>
+                          <Ionicons name="checkmark-circle" size={18} color="#10b981" />
+                          <Text style={styles.detailTitle}>Ingredients</Text>
+                        </View>
+                        <View style={styles.ingredientTags}>
+                          {recipe.ingredients_from_image.map((ing, i) => (
+                            <View key={i} style={styles.ingredientTag}>
+                              <Text style={styles.ingredientTagText}>{ing}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      </View>
+                    )}
+                    {recipe.steps?.length > 0 && (
+                      <View style={styles.stepsSection}>
+                        <View style={styles.detailHeader}>
+                          <Ionicons name="list" size={18} color="#6366f1" />
+                          <Text style={styles.detailTitle}>Instructions</Text>
+                        </View>
+                        {recipe.steps.map((step, i) => (
+                          <View key={i} style={styles.stepRow}>
+                            <View style={styles.stepNumber}>
+                              <Text style={styles.stepNumberText}>{i + 1}</Text>
+                            </View>
+                            <Text style={styles.stepText}>{step}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                  </View>
+                )}
+
+                <View style={styles.expandRow}>
+                  <Ionicons name={isExpanded ? "chevron-up" : "chevron-down"} size={18} color="#94a3b8" />
+                </View>
+              </TouchableOpacity>
+            );
+          })
+        )}
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
 export default function App() {
   return (
     <NavigationContainer>
@@ -948,6 +1598,9 @@ export default function App() {
       >
         <Stack.Screen name="Home" component={HomeScreen} />
         <Stack.Screen name="Result" component={ResultScreen} />
+        <Stack.Screen name="History" component={HistoryScreen} />
+        <Stack.Screen name="HistoryDetail" component={HistoryDetailScreen} />
+        <Stack.Screen name="Favorites" component={FavoritesScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );
@@ -1324,65 +1977,68 @@ const styles = StyleSheet.create({
     color: "#64748b",
   },
   productsList: {
-    gap: 8,
+    gap: 10,
   },
   productItem: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 12,
+    paddingVertical: 14,
     paddingHorizontal: 14,
     backgroundColor: "#f8fafc",
     borderRadius: 12,
   },
   productIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
+    width: 36,
+    height: 36,
+    borderRadius: 10,
     backgroundColor: "#fff",
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
   },
   productInfo: {
     flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: "column",
+    justifyContent: "center",
+    marginRight: 8,
   },
   productName: {
     fontSize: 15,
     color: "#1e293b",
-    fontWeight: "500",
-    flex: 1,
+    fontWeight: "600",
+    lineHeight: 20,
+    marginBottom: 4,
   },
   quantityBadge: {
     backgroundColor: "#e0f2fe",
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 12,
-    marginLeft: 8,
+    borderRadius: 10,
+    alignSelf: "flex-start",
   },
   productQuantity: {
-    fontSize: 12,
+    fontSize: 13,
     color: "#0284c7",
-    fontWeight: "600",
+    fontWeight: "500",
   },
   productActions: {
     flexDirection: "row",
-    gap: 8,
-    marginLeft: 8,
+    gap: 10,
   },
   productEditButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
+    width: 36,
+    height: 36,
+    borderRadius: 10,
     backgroundColor: "#eef2ff",
     justifyContent: "center",
     alignItems: "center",
   },
   productDeleteButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
+    width: 36,
+    height: 36,
+    borderRadius: 10,
     backgroundColor: "#fef2f2",
     justifyContent: "center",
     alignItems: "center",
@@ -1425,6 +2081,102 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginLeft: 8,
+  },
+  headerButtons: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  headerButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: "#f1f5f9",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  favoriteButton: {
+    padding: 4,
+    marginLeft: 8,
+  },
+  shoppingListButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: "#f1f5f9",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  emptyState: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 60,
+  },
+  emptyStateTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#64748b",
+    marginTop: 16,
+  },
+  emptyStateText: {
+    fontSize: 14,
+    color: "#94a3b8",
+    marginTop: 4,
+  },
+  historyCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 12,
+    marginBottom: 12,
+    shadowColor: "#0f172a",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  historyImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 12,
+  },
+  historyInfo: {
+    flex: 1,
+    marginLeft: 12,
+    justifyContent: "center",
+  },
+  historyDate: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1e293b",
+  },
+  historyStats: {
+    fontSize: 13,
+    color: "#64748b",
+    marginTop: 4,
+  },
+  historyProducts: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 4,
+    marginTop: 8,
+  },
+  historyProductTag: {
+    fontSize: 11,
+    backgroundColor: "#f1f5f9",
+    color: "#64748b",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  historyMoreTag: {
+    fontSize: 11,
+    backgroundColor: "#e0e7ff",
+    color: "#6366f1",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
   },
   filterSection: {
     marginBottom: 20,
