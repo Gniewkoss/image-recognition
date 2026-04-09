@@ -114,6 +114,20 @@ const MatchBadge = ({ percent }) => {
   );
 };
 
+const getCategoryColor = (category) => {
+  const colors = {
+    'Breakfast': '#FF9800',
+    'Lunch': '#4CAF50',
+    'Dinner': '#7E57C2',
+    'Snack': '#FFB74D',
+    'Dessert': '#E91E63',
+    'Salad': '#66BB6A',
+    'Drink': '#42A5F5',
+    'Side': '#78909C',
+  };
+  return colors[category] || '#9E9E9E';
+};
+
 const RecipeCard = ({ recipe, onPress, onFavorite, isFavorited, compact }) => {
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
@@ -138,8 +152,8 @@ const RecipeCard = ({ recipe, onPress, onFavorite, isFavorited, compact }) => {
           {recipe.image ? (
             <Image source={{ uri: recipe.image }} style={styles.recipeImage} />
           ) : (
-            <View style={styles.recipeImagePlaceholder}>
-              <Ionicons name="restaurant-outline" size={32} color={COLORS.textLight} />
+            <View style={[styles.recipeImagePlaceholder, { backgroundColor: getCategoryColor(recipe.category) }]}>
+              <Text style={styles.recipeEmojiPlaceholder}>{recipe.emoji || '🍽️'}</Text>
             </View>
           )}
           <TouchableOpacity
@@ -1081,8 +1095,8 @@ function RecipeDetailScreen({ route, navigation }) {
         {recipe.image ? (
           <Image source={{ uri: recipe.image }} style={styles.recipeHeroImage} />
         ) : (
-          <View style={[styles.recipeHeroPlaceholder, { backgroundColor: COLORS.primaryLight }]}>
-            <Ionicons name="restaurant-outline" size={60} color="#fff" />
+          <View style={[styles.recipeHeroPlaceholder, { backgroundColor: getCategoryColor(recipe.category) }]}>
+            <Text style={styles.recipeHeroEmoji}>{recipe.emoji || '🍽️'}</Text>
           </View>
         )}
         
@@ -1491,6 +1505,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: COLORS.border,
+  },
+  recipeEmojiPlaceholder: {
+    fontSize: 48,
   },
   favoriteButton: {
     position: "absolute",
@@ -1922,6 +1939,9 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+  },
+  recipeHeroEmoji: {
+    fontSize: 80,
   },
   heroGradient: {
     position: "absolute",
