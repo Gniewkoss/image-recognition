@@ -1092,13 +1092,14 @@ function IngredientsTab({ navigation }) {
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
       
-      <View style={styles.screenHeader}>
-        <Text style={styles.screenTitle}>My Ingredients</Text>
-        <View style={styles.headerActions}>
-          <TouchableOpacity style={styles.headerBtn} onPress={() => setShowAddModal(true)}>
-            <Ionicons name="add" size={24} color={COLORS.primary} />
-          </TouchableOpacity>
+      <View style={styles.pageHeader}>
+        <View>
+          <Text style={styles.pageHeaderSubtitle}>What you have</Text>
+          <Text style={styles.pageHeaderTitle}>My Pantry</Text>
         </View>
+        <TouchableOpacity style={styles.pageHeaderBtn} onPress={() => setShowAddModal(true)}>
+          <Ionicons name="add" size={22} color="#fff" />
+        </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContentPadded}>
@@ -1106,7 +1107,7 @@ function IngredientsTab({ navigation }) {
           <EmptyState
             icon="nutrition-outline"
             title="No ingredients yet"
-            subtitle="Scan your fridge to get started"
+            subtitle="Scan your fridge or add items manually"
             actionText="Scan Fridge"
             onAction={() => navigation.navigate("HomeTab")}
           />
@@ -1245,13 +1246,18 @@ function FavoritesTab({ navigation }) {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
-      
-      <View style={styles.screenHeader}>
-        <Text style={styles.screenTitle}>Favorites</Text>
-        <View style={styles.countBadgeLarge}>
-          <Ionicons name="heart" size={16} color={COLORS.error} />
-          <Text style={styles.countTextLarge}>{favorites.length}</Text>
+
+      <View style={styles.pageHeader}>
+        <View>
+          <Text style={styles.pageHeaderSubtitle}>Your collection</Text>
+          <Text style={styles.pageHeaderTitle}>Saved Recipes</Text>
         </View>
+        {favorites.length > 0 && (
+          <View style={styles.pageHeaderBadge}>
+            <Ionicons name="heart" size={14} color={COLORS.error} />
+            <Text style={styles.pageHeaderBadgeText}>{favorites.length}</Text>
+          </View>
+        )}
       </View>
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContentPadded}>
@@ -1259,7 +1265,7 @@ function FavoritesTab({ navigation }) {
           <EmptyState
             icon="heart-outline"
             title="No favorites yet"
-            subtitle="Save recipes you love for quick access"
+            subtitle="Save recipes you love and access them quickly here"
           />
         ) : (
           <View style={styles.favoritesGrid}>
@@ -1357,13 +1363,14 @@ function ShoppingListTab({ navigation }) {
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
       
-      <View style={styles.screenHeader}>
-        <Text style={styles.screenTitle}>Shopping List</Text>
-        <View style={styles.headerActions}>
-          <TouchableOpacity style={styles.headerBtn} onPress={shareList}>
-            <Ionicons name="share-outline" size={22} color={COLORS.text} />
-          </TouchableOpacity>
+      <View style={styles.pageHeader}>
+        <View>
+          <Text style={styles.pageHeaderSubtitle}>Things to buy</Text>
+          <Text style={styles.pageHeaderTitle}>Shopping List</Text>
         </View>
+        <TouchableOpacity style={styles.pageHeaderBtnOutline} onPress={shareList}>
+          <Ionicons name="share-outline" size={20} color={COLORS.primary} />
+        </TouchableOpacity>
       </View>
 
       <View style={styles.addItemRow}>
@@ -1564,10 +1571,10 @@ function RecipeDetailScreen({ route, navigation }) {
 
       <ScrollView style={styles.recipeDetailScroll}>
         {recipe.matched_ingredients && recipe.matched_ingredients.length > 0 && (
-          <View style={styles.recipeSection}>
-            <View style={styles.recipeSectionHeader}>
-              <Ionicons name="checkmark-circle" size={22} color={COLORS.success} />
-              <Text style={styles.recipeSectionTitle}>You Have ({recipe.matched_count})</Text>
+          <View style={styles.recipeDetailSection}>
+            <View style={styles.recipeDetailSectionHeader}>
+              <Ionicons name="checkmark-circle" size={20} color={COLORS.success} />
+              <Text style={styles.recipeDetailSectionTitle}>You Have ({recipe.matched_count})</Text>
             </View>
             <View style={styles.ingredientTags}>
               {recipe.matched_ingredients.map((ing, i) => (
@@ -1580,10 +1587,10 @@ function RecipeDetailScreen({ route, navigation }) {
         )}
 
         {recipe.missing_ingredients && recipe.missing_ingredients.length > 0 && (
-          <View style={styles.recipeSection}>
-            <View style={styles.recipeSectionHeader}>
-              <Ionicons name="cart-outline" size={22} color={COLORS.warning} />
-              <Text style={styles.recipeSectionTitle}>You Need ({recipe.missing_count})</Text>
+          <View style={styles.recipeDetailSection}>
+            <View style={styles.recipeDetailSectionHeader}>
+              <Ionicons name="cart-outline" size={20} color={COLORS.warning} />
+              <Text style={styles.recipeDetailSectionTitle}>You Need ({recipe.missing_count})</Text>
             </View>
             <View style={styles.ingredientTags}>
               {recipe.missing_ingredients.map((ing, i) => (
@@ -1600,10 +1607,10 @@ function RecipeDetailScreen({ route, navigation }) {
         )}
 
         {recipe.ingredients && recipe.ingredients.length > 0 && (
-          <View style={styles.recipeSection}>
-            <View style={styles.recipeSectionHeader}>
-              <Ionicons name="list" size={22} color={COLORS.primary} />
-              <Text style={styles.recipeSectionTitle}>All Ingredients</Text>
+          <View style={styles.recipeDetailSection}>
+            <View style={styles.recipeDetailSectionHeader}>
+              <Ionicons name="list" size={20} color={COLORS.primary} />
+              <Text style={styles.recipeDetailSectionTitle}>All Ingredients</Text>
             </View>
             {recipe.ingredients.map((ing, i) => (
               <View key={i} style={styles.fullIngredientRow}>
@@ -1615,10 +1622,10 @@ function RecipeDetailScreen({ route, navigation }) {
         )}
 
         {recipe.steps && recipe.steps.length > 0 && (
-          <View style={styles.recipeSection}>
-            <View style={styles.recipeSectionHeader}>
-              <Ionicons name="reader-outline" size={22} color={COLORS.primary} />
-              <Text style={styles.recipeSectionTitle}>Instructions</Text>
+          <View style={styles.recipeDetailSection}>
+            <View style={styles.recipeDetailSectionHeader}>
+              <Ionicons name="reader-outline" size={20} color={COLORS.primary} />
+              <Text style={styles.recipeDetailSectionTitle}>Instructions</Text>
             </View>
             {recipe.steps.map((step, i) => (
               <View key={i} style={styles.stepRow}>
@@ -2109,7 +2116,7 @@ const styles = StyleSheet.create({
   },
   recipeScrollContent: {
     paddingLeft: SPACING.xl,
-    paddingRight: SPACING.xl,
+    paddingRight: SPACING.lg,
   },
   noResultsContainer: {
     alignItems: "center",
@@ -2331,7 +2338,60 @@ const styles = StyleSheet.create({
     paddingTop: SPACING.lg,
   },
 
-  // Screen Header
+  // Page Header (Unified)
+  pageHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: SPACING.xl,
+    paddingTop: SPACING.sm,
+    paddingBottom: SPACING.lg,
+  },
+  pageHeaderSubtitle: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    fontWeight: "500",
+  },
+  pageHeaderTitle: {
+    fontSize: 26,
+    fontWeight: "800",
+    color: COLORS.text,
+    letterSpacing: -0.5,
+    marginTop: 2,
+  },
+  pageHeaderBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+    backgroundColor: COLORS.error + "12",
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.full,
+  },
+  pageHeaderBadgeText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: COLORS.error,
+  },
+  pageHeaderBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.primary,
+    justifyContent: "center",
+    alignItems: "center",
+    ...SHADOWS.md,
+  },
+  pageHeaderBtnOutline: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.primary + '12',
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  
+  // Legacy Screen Header
   screenHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -2470,15 +2530,15 @@ const styles = StyleSheet.create({
   // Shopping List
   addItemRow: {
     flexDirection: "row",
-    paddingHorizontal: 20,
-    gap: 12,
-    marginBottom: 12,
+    paddingHorizontal: SPACING.xl,
+    gap: SPACING.sm,
+    marginBottom: SPACING.lg,
   },
   addItemInput: {
     flex: 1,
     height: 48,
     backgroundColor: COLORS.card,
-    borderRadius: 12,
+    borderRadius: RADIUS.md,
     paddingHorizontal: 16,
     fontSize: 16,
     color: COLORS.text,
@@ -2745,34 +2805,34 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
   },
-  recipeSection: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+  recipeDetailSection: {
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.lg,
   },
-  recipeSectionHeader: {
+  recipeDetailSectionHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    marginBottom: 14,
+    gap: SPACING.sm,
+    marginBottom: SPACING.md,
   },
-  recipeSectionTitle: {
-    fontSize: 18,
+  recipeDetailSectionTitle: {
+    fontSize: 17,
     fontWeight: "700",
     color: COLORS.text,
   },
   ingredientTags: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
+    gap: SPACING.sm,
   },
   ingredientTag: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.sm,
     borderWidth: 1,
   },
   ingredientTagText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "500",
   },
   fullIngredientRow: {
