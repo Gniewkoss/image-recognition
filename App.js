@@ -128,7 +128,7 @@ const getCategoryColor = (category) => {
   return colors[category] || '#9E9E9E';
 };
 
-const RecipeCard = ({ recipe, onPress, onFavorite, isFavorited, compact }) => {
+const RecipeCard = ({ recipe, onPress, onFavorite, isFavorited, compact, gridMode }) => {
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
   const handlePressIn = () => {
@@ -140,9 +140,9 @@ const RecipeCard = ({ recipe, onPress, onFavorite, isFavorited, compact }) => {
   };
 
   return (
-    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+    <Animated.View style={[{ transform: [{ scale: scaleAnim }] }, gridMode && { flex: 1 }]}>
       <TouchableOpacity
-        style={[styles.recipeCard, compact && styles.recipeCardCompact]}
+        style={[styles.recipeCard, compact && styles.recipeCardCompact, gridMode && styles.recipeCardGrid]}
         onPress={onPress}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
@@ -944,13 +944,15 @@ function FavoritesTab({ navigation }) {
         ) : (
           <View style={styles.favoritesGrid}>
             {favorites.map((recipe, index) => (
-              <RecipeCard
-                key={`${recipe.id}-${index}`}
-                recipe={recipe}
-                onPress={() => navigation.navigate("RecipeDetail", { recipe })}
-                onFavorite={removeFavorite}
-                isFavorited={true}
-              />
+              <View key={`${recipe.id}-${index}`} style={styles.favoritesGridItem}>
+                <RecipeCard
+                  recipe={recipe}
+                  onPress={() => navigation.navigate("RecipeDetail", { recipe })}
+                  onFavorite={removeFavorite}
+                  isFavorited={true}
+                  gridMode
+                />
+              </View>
             ))}
           </View>
         )}
@@ -1657,6 +1659,10 @@ const styles = StyleSheet.create({
   recipeCardCompact: {
     width: SCREEN_WIDTH * 0.44,
   },
+  recipeCardGrid: {
+    width: "100%",
+    marginRight: 0,
+  },
   recipeImageContainer: {
     height: 130,
     position: "relative",
@@ -1916,7 +1922,11 @@ const styles = StyleSheet.create({
   favoritesGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 14,
+    justifyContent: "space-between",
+  },
+  favoritesGridItem: {
+    width: (SCREEN_WIDTH - 40 - 14) / 2,
+    marginBottom: 14,
   },
 
   // Shopping List
