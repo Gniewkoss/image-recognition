@@ -85,20 +85,40 @@ const SkeletonLoader = ({ width, height, style }) => {
   );
 };
 
-const EmptyState = ({ icon, title, subtitle, actionText, onAction }) => (
-  <View style={styles.emptyState}>
-    <View style={styles.emptyStateIcon}>
-      <Ionicons name={icon} size={48} color={COLORS.textLight} />
+const EmptyState = ({ icon, title, subtitle, actionText, onAction }) => {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, { toValue: 0.96, useNativeDriver: true }).start();
+  };
+  
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true }).start();
+  };
+
+  return (
+    <View style={styles.emptyState}>
+      <View style={styles.emptyStateIcon}>
+        <Ionicons name={icon} size={42} color={COLORS.primary} />
+      </View>
+      <Text style={styles.emptyStateTitle}>{title}</Text>
+      <Text style={styles.emptyStateSubtitle}>{subtitle}</Text>
+      {actionText && onAction && (
+        <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+          <TouchableOpacity 
+            style={styles.emptyStateButton} 
+            onPress={onAction}
+            onPressIn={handlePressIn}
+            onPressOut={handlePressOut}
+            activeOpacity={1}
+          >
+            <Text style={styles.emptyStateButtonText}>{actionText}</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      )}
     </View>
-    <Text style={styles.emptyStateTitle}>{title}</Text>
-    <Text style={styles.emptyStateSubtitle}>{subtitle}</Text>
-    {actionText && onAction && (
-      <TouchableOpacity style={styles.emptyStateButton} onPress={onAction}>
-        <Text style={styles.emptyStateButtonText}>{actionText}</Text>
-      </TouchableOpacity>
-    )}
-  </View>
-);
+  );
+};
 
 const MatchBadge = ({ percent }) => {
   const getColor = () => {
@@ -127,6 +147,81 @@ const getCategoryColor = (category) => {
   };
   return colors[category] || '#9E9E9E';
 };
+
+const getIngredientIcon = (name) => {
+  const lowered = name.toLowerCase();
+  
+  // Proteins
+  if (/chicken|poultry|turkey|duck/.test(lowered)) return { icon: 'drumstick-bite', type: 'mci', color: '#D4A574' };
+  if (/beef|steak|meat|pork|lamb|bacon|ham|sausage/.test(lowered)) return { icon: 'food-steak', type: 'mci', color: '#C0392B' };
+  if (/fish|salmon|tuna|cod|shrimp|prawn|seafood|crab|lobster/.test(lowered)) return { icon: 'fish', type: 'ion', color: '#3498DB' };
+  if (/egg/.test(lowered)) return { icon: 'egg-outline', type: 'ion', color: '#F5D6BA' };
+  
+  // Dairy
+  if (/milk|cream/.test(lowered)) return { icon: 'cup', type: 'mci', color: '#ECF0F1' };
+  if (/cheese|cheddar|mozzarella|parmesan/.test(lowered)) return { icon: 'cheese', type: 'mci', color: '#F4D03F' };
+  if (/butter/.test(lowered)) return { icon: 'cube-outline', type: 'ion', color: '#F9E79F' };
+  if (/yogurt|yoghurt/.test(lowered)) return { icon: 'cup-outline', type: 'mci', color: '#FDEBD0' };
+  
+  // Vegetables
+  if (/tomato/.test(lowered)) return { icon: 'food-apple', type: 'mci', color: '#E74C3C' };
+  if (/carrot/.test(lowered)) return { icon: 'carrot', type: 'mci', color: '#E67E22' };
+  if (/onion|garlic|shallot/.test(lowered)) return { icon: 'food-variant', type: 'mci', color: '#D5DBDB' };
+  if (/potato|potatoes/.test(lowered)) return { icon: 'food-variant', type: 'mci', color: '#D4A574' };
+  if (/lettuce|salad|spinach|kale|greens/.test(lowered)) return { icon: 'leaf', type: 'ion', color: '#27AE60' };
+  if (/pepper|capsicum|chili|jalapeno/.test(lowered)) return { icon: 'chili-mild', type: 'mci', color: '#E74C3C' };
+  if (/broccoli|cauliflower/.test(lowered)) return { icon: 'flower-outline', type: 'mci', color: '#2ECC71' };
+  if (/mushroom/.test(lowered)) return { icon: 'mushroom-outline', type: 'mci', color: '#8D6E63' };
+  if (/corn/.test(lowered)) return { icon: 'corn', type: 'mci', color: '#F1C40F' };
+  if (/celery|cucumber|zucchini/.test(lowered)) return { icon: 'leaf', type: 'ion', color: '#82E0AA' };
+  if (/avocado/.test(lowered)) return { icon: 'fruit-pineapple', type: 'mci', color: '#229954' };
+  if (/pea|bean|lentil/.test(lowered)) return { icon: 'seed-outline', type: 'mci', color: '#58D68D' };
+  
+  // Fruits
+  if (/apple/.test(lowered)) return { icon: 'food-apple-outline', type: 'mci', color: '#E74C3C' };
+  if (/banana/.test(lowered)) return { icon: 'fruit-grapes', type: 'mci', color: '#F4D03F' };
+  if (/orange|citrus|lemon|lime/.test(lowered)) return { icon: 'fruit-citrus', type: 'mci', color: '#F39C12' };
+  if (/berry|strawberry|blueberry|raspberry/.test(lowered)) return { icon: 'fruit-cherries', type: 'mci', color: '#9B59B6' };
+  if (/grape/.test(lowered)) return { icon: 'fruit-grapes', type: 'mci', color: '#8E44AD' };
+  if (/pineapple|mango|papaya/.test(lowered)) return { icon: 'fruit-pineapple', type: 'mci', color: '#F1C40F' };
+  if (/watermelon|melon/.test(lowered)) return { icon: 'fruit-watermelon', type: 'mci', color: '#E91E63' };
+  
+  // Grains & Carbs
+  if (/bread|toast|baguette|roll/.test(lowered)) return { icon: 'bread-slice-outline', type: 'mci', color: '#D4A574' };
+  if (/rice/.test(lowered)) return { icon: 'grain', type: 'mci', color: '#FDEBD0' };
+  if (/pasta|noodle|spaghetti|penne|macaroni/.test(lowered)) return { icon: 'noodles', type: 'mci', color: '#F5CBA7' };
+  if (/flour|wheat/.test(lowered)) return { icon: 'barley', type: 'mci', color: '#F5DEB3' };
+  if (/oat|cereal|granola/.test(lowered)) return { icon: 'barley', type: 'mci', color: '#D4A574' };
+  
+  // Condiments & Sauces
+  if (/sauce|ketchup|mayo|mustard|dressing/.test(lowered)) return { icon: 'bottle-soda-classic-outline', type: 'mci', color: '#E74C3C' };
+  if (/oil|olive/.test(lowered)) return { icon: 'water-outline', type: 'ion', color: '#F4D03F' };
+  if (/vinegar/.test(lowered)) return { icon: 'bottle-wine-outline', type: 'mci', color: '#C0392B' };
+  if (/honey/.test(lowered)) return { icon: 'beehive-outline', type: 'mci', color: '#F5B041' };
+  if (/sugar/.test(lowered)) return { icon: 'cube-outline', type: 'ion', color: '#FDFEFE' };
+  if (/salt|pepper|spice|seasoning|herb/.test(lowered)) return { icon: 'shaker-outline', type: 'mci', color: '#95A5A6' };
+  
+  // Beverages
+  if (/coffee/.test(lowered)) return { icon: 'coffee-outline', type: 'ion', color: '#6F4E37' };
+  if (/tea/.test(lowered)) return { icon: 'leaf', type: 'ion', color: '#2ECC71' };
+  if (/juice/.test(lowered)) return { icon: 'cup', type: 'mci', color: '#F39C12' };
+  if (/water/.test(lowered)) return { icon: 'water-outline', type: 'ion', color: '#3498DB' };
+  if (/wine|beer|alcohol/.test(lowered)) return { icon: 'beer-outline', type: 'ion', color: '#F39C12' };
+  
+  // Nuts & Seeds
+  if (/nut|almond|walnut|peanut|cashew|pistachio/.test(lowered)) return { icon: 'peanut-outline', type: 'mci', color: '#A67C52' };
+  if (/seed|sesame|sunflower/.test(lowered)) return { icon: 'seed-outline', type: 'mci', color: '#D4A574' };
+  
+  // Baking
+  if (/chocolate|cocoa/.test(lowered)) return { icon: 'candycane', type: 'mci', color: '#6B4226' };
+  if (/vanilla/.test(lowered)) return { icon: 'flower', type: 'ion', color: '#F5DEB3' };
+  if (/baking|yeast/.test(lowered)) return { icon: 'cube-outline', type: 'ion', color: '#FDEBD0' };
+  
+  // Default
+  return { icon: 'nutrition-outline', type: 'ion', color: COLORS.primary };
+};
+
+const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 
 const RecipeCard = ({ recipe, onPress, onFavorite, isFavorited, compact, gridMode }) => {
   const scaleAnim = useRef(new Animated.Value(1)).current;
@@ -211,24 +306,50 @@ const RecipeCard = ({ recipe, onPress, onFavorite, isFavorited, compact, gridMod
   );
 };
 
-const IngredientChip = ({ ingredient, onRemove, editable }) => (
-  <View style={styles.ingredientChip}>
-    <View style={styles.ingredientChipIcon}>
-      <Ionicons name="nutrition-outline" size={16} color={COLORS.primary} />
-    </View>
-    <View style={styles.ingredientChipContent}>
-      <Text style={styles.ingredientChipName} numberOfLines={1}>{ingredient.name}</Text>
-      {ingredient.quantity && (
-        <Text style={styles.ingredientChipQuantity}>{ingredient.quantity}</Text>
-      )}
-    </View>
-    {editable && onRemove && (
-      <TouchableOpacity style={styles.ingredientChipRemove} onPress={onRemove}>
-        <Ionicons name="close" size={16} color={COLORS.textSecondary} />
-      </TouchableOpacity>
-    )}
-  </View>
-);
+const IngredientChip = ({ ingredient, onRemove, editable }) => {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const { icon, type, color } = getIngredientIcon(ingredient.name);
+  
+  const handlePressIn = () => {
+    if (editable) {
+      Animated.spring(scaleAnim, { toValue: 0.95, useNativeDriver: true }).start();
+    }
+  };
+  
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true }).start();
+  };
+
+  const IconComponent = type === 'mci' ? MaterialCommunityIcons : Ionicons;
+  
+  return (
+    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+      <View style={styles.ingredientChip}>
+        <View style={[styles.ingredientChipIcon, { backgroundColor: color + '25' }]}>
+          <IconComponent name={icon} size={18} color={color} />
+        </View>
+        <View style={styles.ingredientChipContent}>
+          <Text style={styles.ingredientChipName} numberOfLines={1}>{ingredient.name}</Text>
+          {ingredient.quantity && (
+            <Text style={styles.ingredientChipQuantity}>{ingredient.quantity}</Text>
+          )}
+        </View>
+        {editable && onRemove && (
+          <TouchableOpacity 
+            style={styles.ingredientChipRemove} 
+            onPress={onRemove}
+            onPressIn={handlePressIn}
+            onPressOut={handlePressOut}
+          >
+            <View style={styles.chipRemoveIcon}>
+              <Ionicons name="close" size={12} color="#fff" />
+            </View>
+          </TouchableOpacity>
+        )}
+      </View>
+    </Animated.View>
+  );
+};
 
 const RECIPE_CATEGORIES = [
   { id: 'all', label: 'All', icon: 'apps-outline' },
@@ -470,54 +591,119 @@ function HomeTab({ navigation }) {
       <StatusBar style="dark" />
       
       <View style={styles.homeHeader}>
-        <View>
-          <Text style={styles.greeting}>{greeting()}! 👋</Text>
-          <Text style={styles.headerQuestion}>What's in your fridge today?</Text>
+        <View style={styles.headerLeft}>
+          <Text style={styles.greeting}>{greeting()}!</Text>
+          <Text style={styles.headerQuestion}>What's cooking today?</Text>
         </View>
-        <TouchableOpacity style={styles.settingsBtn} onPress={() => setShowApiModal(true)}>
-          <Ionicons name="settings-outline" size={24} color={COLORS.text} />
+        <TouchableOpacity 
+          style={[styles.headerIconBtn, apiKey && styles.headerIconBtnActive]} 
+          onPress={() => setShowApiModal(true)}
+        >
+          <Ionicons 
+            name={apiKey ? "checkmark-circle" : "key-outline"} 
+            size={22} 
+            color={apiKey ? COLORS.success : COLORS.textSecondary} 
+          />
         </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        <TouchableOpacity
-          style={styles.scanButton}
-          onPress={() => {
-            Alert.alert("Scan Fridge", "Choose an option", [
-              { text: "Take Photo", onPress: () => startScan(true) },
-              { text: "Choose from Library", onPress: () => startScan(false) },
-              { text: "Cancel", style: "cancel" },
-            ]);
-          }}
-          disabled={scanning || searchingRecipes}
-        >
-          <LinearGradient
-            colors={scanning || searchingRecipes ? ["#9E9E9E", "#BDBDBD"] : COLORS.gradient}
-            style={styles.scanButtonGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
+        {/* Quick Actions */}
+        <View style={styles.quickActions}>
+          <TouchableOpacity
+            style={styles.mainScanButton}
+            onPress={() => startScan(true)}
+            disabled={scanning || searchingRecipes}
+            activeOpacity={0.9}
           >
-            {scanning ? (
-              <View style={styles.scanningContent}>
-                <ActivityIndicator color="#fff" size="small" />
-                <Text style={styles.scanButtonText}>Detecting ingredients...</Text>
-              </View>
-            ) : searchingRecipes ? (
-              <View style={styles.scanningContent}>
-                <ActivityIndicator color="#fff" size="small" />
-                <Text style={styles.scanButtonText}>Finding recipes...</Text>
-              </View>
-            ) : (
-              <>
-                <View style={styles.scanIconContainer}>
-                  <Ionicons name="scan-outline" size={32} color="#fff" />
+            <LinearGradient
+              colors={scanning || searchingRecipes ? ["#9E9E9E", "#BDBDBD"] : COLORS.gradient}
+              style={styles.mainScanGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              {scanning ? (
+                <View style={styles.scanningContent}>
+                  <ActivityIndicator color="#fff" size="small" />
+                  <Text style={styles.mainScanText}>Detecting...</Text>
                 </View>
-                <Text style={styles.scanButtonText}>Scan Your Fridge</Text>
-                <Text style={styles.scanButtonSubtext}>AI detects ingredients, we find real recipes</Text>
-              </>
-            )}
-          </LinearGradient>
-        </TouchableOpacity>
+              ) : searchingRecipes ? (
+                <View style={styles.scanningContent}>
+                  <ActivityIndicator color="#fff" size="small" />
+                  <Text style={styles.mainScanText}>Finding recipes...</Text>
+                </View>
+              ) : (
+                <>
+                  <View style={styles.scanIconCircle}>
+                    <Ionicons name="camera-outline" size={28} color="#fff" />
+                  </View>
+                  <Text style={styles.mainScanText}>Scan Fridge</Text>
+                  <Text style={styles.mainScanSubtext}>Take a photo</Text>
+                </>
+              )}
+            </LinearGradient>
+          </TouchableOpacity>
+          
+          <View style={styles.secondaryActions}>
+            <TouchableOpacity
+              style={styles.secondaryActionBtn}
+              onPress={() => startScan(false)}
+              disabled={scanning || searchingRecipes}
+              activeOpacity={0.8}
+            >
+              <View style={styles.secondaryActionIcon}>
+                <Ionicons name="images-outline" size={22} color={COLORS.primary} />
+              </View>
+              <Text style={styles.secondaryActionText}>Gallery</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={styles.secondaryActionBtn}
+              onPress={() => navigation.navigate("IngredientsTab")}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.secondaryActionIcon, { backgroundColor: COLORS.accent + '15' }]}>
+                <Ionicons name="add-outline" size={22} color={COLORS.accent} />
+              </View>
+              <Text style={styles.secondaryActionText}>Add Manual</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Stats Row */}
+        {(ingredients.length > 0 || recipes.length > 0) && (
+          <View style={styles.statsRow}>
+            <View style={styles.statItem}>
+              <View style={[styles.statIcon, { backgroundColor: COLORS.primary + '15' }]}>
+                <Ionicons name="nutrition" size={18} color={COLORS.primary} />
+              </View>
+              <View>
+                <Text style={styles.statNumber}>{ingredients.length}</Text>
+                <Text style={styles.statLabel}>Ingredients</Text>
+              </View>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statItem}>
+              <View style={[styles.statIcon, { backgroundColor: COLORS.accent + '15' }]}>
+                <Ionicons name="restaurant" size={18} color={COLORS.accent} />
+              </View>
+              <View>
+                <Text style={styles.statNumber}>{recipes.length}</Text>
+                <Text style={styles.statLabel}>Recipes</Text>
+              </View>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statItem}>
+              <View style={[styles.statIcon, { backgroundColor: COLORS.error + '15' }]}>
+                <Ionicons name="heart" size={18} color={COLORS.error} />
+              </View>
+              <View>
+                <Text style={styles.statNumber}>{favorites.length}</Text>
+                <Text style={styles.statLabel}>Favorites</Text>
+              </View>
+            </View>
+          </View>
+        )}
 
         {ingredients.length > 0 && (
           <View style={styles.section}>
@@ -798,25 +984,31 @@ function IngredientsTab({ navigation }) {
           />
         ) : (
           <View style={styles.ingredientsGrid}>
-            {ingredients.map((item, index) => (
-              <View key={index} style={styles.ingredientCard}>
-                <View style={styles.ingredientCardIcon}>
-                  <Ionicons name="nutrition" size={24} color={COLORS.primary} />
-                </View>
-                <Text style={styles.ingredientCardName} numberOfLines={2}>{item.name}</Text>
-                {item.quantity && (
-                  <Text style={styles.ingredientCardQuantity}>{item.quantity}</Text>
-                )}
-                <View style={styles.ingredientCardActions}>
-                  <TouchableOpacity style={styles.ingredientActionBtn} onPress={() => startEdit(index)}>
-                    <Feather name="edit-2" size={16} color={COLORS.textSecondary} />
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.ingredientActionBtn} onPress={() => deleteIngredient(index)}>
-                    <Feather name="trash-2" size={16} color={COLORS.error} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))}
+            {ingredients.map((item, index) => {
+              const { icon, type, color } = getIngredientIcon(item.name);
+              const IconComponent = type === 'mci' ? MaterialCommunityIcons : Ionicons;
+              return (
+                <Animated.View key={index} style={styles.ingredientCard}>
+                  <View style={[styles.ingredientCardIcon, { backgroundColor: color + '20' }]}>
+                    <IconComponent name={icon} size={26} color={color} />
+                  </View>
+                  <Text style={styles.ingredientCardName} numberOfLines={2}>{item.name}</Text>
+                  {item.quantity && (
+                    <View style={styles.ingredientQuantityBadge}>
+                      <Text style={styles.ingredientCardQuantity}>{item.quantity}</Text>
+                    </View>
+                  )}
+                  <View style={styles.ingredientCardActions}>
+                    <TouchableOpacity style={styles.ingredientActionBtn} onPress={() => startEdit(index)}>
+                      <Feather name="edit-2" size={15} color={COLORS.primary} />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.ingredientActionBtn, styles.deleteActionBtn]} onPress={() => deleteIngredient(index)}>
+                      <Feather name="trash-2" size={15} color={COLORS.error} />
+                    </TouchableOpacity>
+                  </View>
+                </Animated.View>
+              );
+            })}
           </View>
         )}
 
@@ -1333,6 +1525,17 @@ function RecipeDetailScreen({ route, navigation }) {
   );
 }
 
+const TabIcon = ({ focused, iconName, color, label }) => (
+  <View style={{ alignItems: 'center', paddingTop: 4 }}>
+    <View style={[
+      styles.tabIconContainer,
+      focused && styles.tabIconContainerActive
+    ]}>
+      <Ionicons name={iconName} size={22} color={color} />
+    </View>
+  </View>
+);
+
 function TabNavigator() {
   return (
     <Tab.Navigator
@@ -1348,14 +1551,14 @@ function TabNavigator() {
           else if (route.name === "IngredientsTab") iconName = focused ? "nutrition" : "nutrition-outline";
           else if (route.name === "FavoritesTab") iconName = focused ? "heart" : "heart-outline";
           else if (route.name === "ShoppingTab") iconName = focused ? "cart" : "cart-outline";
-          return <Ionicons name={iconName} size={24} color={color} />;
+          return <TabIcon focused={focused} iconName={iconName} color={color} />;
         },
       })}
     >
       <Tab.Screen name="HomeTab" component={HomeTab} options={{ tabBarLabel: "Home" }} />
-      <Tab.Screen name="IngredientsTab" component={IngredientsTab} options={{ tabBarLabel: "Ingredients" }} />
-      <Tab.Screen name="FavoritesTab" component={FavoritesTab} options={{ tabBarLabel: "Favorites" }} />
-      <Tab.Screen name="ShoppingTab" component={ShoppingListTab} options={{ tabBarLabel: "Shopping" }} />
+      <Tab.Screen name="IngredientsTab" component={IngredientsTab} options={{ tabBarLabel: "Pantry" }} />
+      <Tab.Screen name="FavoritesTab" component={FavoritesTab} options={{ tabBarLabel: "Saved" }} />
+      <Tab.Screen name="ShoppingTab" component={ShoppingListTab} options={{ tabBarLabel: "List" }} />
     </Tab.Navigator>
   );
 }
@@ -1387,97 +1590,194 @@ const styles = StyleSheet.create({
   homeHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
+    alignItems: "center",
     paddingHorizontal: 20,
-    paddingTop: 16,
+    paddingTop: 12,
     paddingBottom: 8,
   },
+  headerLeft: {
+    flex: 1,
+  },
   greeting: {
-    fontSize: 16,
+    fontSize: 15,
     color: COLORS.textSecondary,
     fontWeight: "500",
   },
   headerQuestion: {
-    fontSize: 24,
-    fontWeight: "700",
+    fontSize: 26,
+    fontWeight: "800",
     color: COLORS.text,
-    marginTop: 4,
+    marginTop: 2,
+    letterSpacing: -0.5,
   },
-  settingsBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
+  headerIconBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     backgroundColor: COLORS.card,
     justifyContent: "center",
     alignItems: "center",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.06,
     shadowRadius: 8,
     elevation: 2,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  headerIconBtnActive: {
+    borderColor: COLORS.success + '40',
+    backgroundColor: COLORS.success + '10',
   },
 
-  // Scan Button
-  scanButton: {
-    marginHorizontal: 20,
-    marginVertical: 20,
-    borderRadius: 24,
+  // Quick Actions
+  quickActions: {
+    flexDirection: "row",
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    gap: 12,
+  },
+  mainScanButton: {
+    flex: 1.3,
+    borderRadius: 20,
     overflow: "hidden",
     shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 6,
   },
-  scanButtonGradient: {
-    padding: 28,
+  mainScanGradient: {
+    paddingVertical: 24,
+    paddingHorizontal: 20,
     alignItems: "center",
+    justifyContent: "center",
+    minHeight: 140,
   },
-  scanIconContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: "rgba(255,255,255,0.2)",
+  scanIconCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: "rgba(255,255,255,0.25)",
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: 10,
   },
-  scanButtonText: {
-    fontSize: 20,
+  mainScanText: {
+    fontSize: 17,
     fontWeight: "700",
     color: "#fff",
-  },
-  scanButtonSubtext: {
-    fontSize: 14,
-    color: "rgba(255,255,255,0.8)",
     marginTop: 4,
+  },
+  mainScanSubtext: {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.8)",
+    marginTop: 2,
+  },
+  secondaryActions: {
+    flex: 1,
+    gap: 12,
+  },
+  secondaryActionBtn: {
+    flex: 1,
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    padding: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  secondaryActionIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: COLORS.primary + '15',
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  secondaryActionText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: COLORS.text,
   },
   scanningContent: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: 10,
+  },
+
+  // Stats Row
+  statsRow: {
+    flexDirection: "row",
+    marginHorizontal: 20,
+    marginBottom: 20,
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  statItem: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  statIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  statNumber: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: COLORS.text,
+  },
+  statLabel: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    marginTop: 1,
+  },
+  statDivider: {
+    width: 1,
+    height: 32,
+    backgroundColor: COLORS.border,
+    marginHorizontal: 8,
   },
 
   // Sections
   section: {
-    marginBottom: 24,
+    marginBottom: 28,
     paddingHorizontal: 20,
   },
   sectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: 14,
   },
   sectionTitleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 10,
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: "700",
+    fontWeight: "800",
     color: COLORS.text,
+    letterSpacing: -0.3,
   },
   seeAllText: {
     fontSize: 14,
@@ -1504,41 +1804,51 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: COLORS.card,
-    borderRadius: 12,
+    borderRadius: 14,
     paddingVertical: 10,
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     marginRight: 10,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
+    shadowOpacity: 0.05,
     shadowRadius: 8,
     elevation: 2,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   ingredientChipIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    backgroundColor: COLORS.primary + "15",
+    width: 32,
+    height: 32,
+    borderRadius: 10,
     justifyContent: "center",
     alignItems: "center",
     marginRight: 10,
   },
   ingredientChipContent: {
-    maxWidth: 100,
+    maxWidth: 90,
   },
   ingredientChipName: {
     fontSize: 14,
     fontWeight: "600",
     color: COLORS.text,
+    textTransform: "capitalize",
   },
   ingredientChipQuantity: {
-    fontSize: 12,
+    fontSize: 11,
     color: COLORS.textSecondary,
-    marginTop: 2,
+    marginTop: 1,
   },
   ingredientChipRemove: {
-    marginLeft: 8,
-    padding: 4,
+    marginLeft: 6,
+    padding: 2,
+  },
+  chipRemoveIcon: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: COLORS.error,
+    justifyContent: "center",
+    alignItems: "center",
   },
   moreChip: {
     backgroundColor: COLORS.primary + "15",
@@ -1567,22 +1877,24 @@ const styles = StyleSheet.create({
 
   // Category Filters
   filterSection: {
-    marginBottom: 16,
+    marginBottom: 20,
+    paddingHorizontal: 20,
   },
   filterHeader: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    marginBottom: 12,
+    marginBottom: 14,
   },
   filterTitle: {
-    fontSize: 15,
-    fontWeight: "600",
+    fontSize: 16,
+    fontWeight: "700",
     color: COLORS.text,
   },
   filterCount: {
     fontSize: 13,
     color: COLORS.textSecondary,
+    fontWeight: "500",
   },
   filterScroll: {
     flexDirection: "row",
@@ -1592,20 +1904,29 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
     backgroundColor: COLORS.card,
-    borderRadius: 20,
+    borderRadius: 24,
     paddingVertical: 10,
     paddingHorizontal: 16,
     marginRight: 10,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: COLORS.border,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    elevation: 1,
   },
   filterChipSelected: {
     backgroundColor: COLORS.primary,
     borderColor: COLORS.primary,
+    shadowColor: COLORS.primary,
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 3,
   },
   filterChipText: {
     fontSize: 14,
-    fontWeight: "500",
+    fontWeight: "600",
     color: COLORS.textSecondary,
   },
   filterChipTextSelected: {
@@ -1647,14 +1968,16 @@ const styles = StyleSheet.create({
   recipeCard: {
     width: SCREEN_WIDTH * 0.44,
     backgroundColor: COLORS.card,
-    borderRadius: 20,
+    borderRadius: 18,
     marginRight: 14,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 4,
+    shadowOpacity: 0.1,
+    shadowRadius: 14,
+    elevation: 5,
     overflow: "hidden",
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   recipeCardCompact: {
     width: SCREEN_WIDTH * 0.44,
@@ -1664,7 +1987,7 @@ const styles = StyleSheet.create({
     marginRight: 0,
   },
   recipeImageContainer: {
-    height: 130,
+    height: 135,
     position: "relative",
   },
   recipeImageContainerCompact: {
@@ -1759,14 +2082,14 @@ const styles = StyleSheet.create({
   // Empty State
   emptyState: {
     alignItems: "center",
-    paddingVertical: 60,
-    paddingHorizontal: 40,
+    paddingVertical: 50,
+    paddingHorizontal: 32,
   },
   emptyStateIcon: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: COLORS.border,
+    width: 90,
+    height: 90,
+    borderRadius: 24,
+    backgroundColor: COLORS.primary + '10',
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 20,
@@ -1788,11 +2111,16 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
     paddingHorizontal: 28,
     paddingVertical: 14,
-    borderRadius: 16,
+    borderRadius: 14,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
   },
   emptyStateButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
+    fontSize: 15,
+    fontWeight: "700",
     color: "#fff",
   },
 
@@ -1808,13 +2136,14 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 12,
+    paddingTop: 12,
+    paddingBottom: 16,
   },
   screenTitle: {
     fontSize: 28,
-    fontWeight: "700",
+    fontWeight: "800",
     color: COLORS.text,
+    letterSpacing: -0.5,
   },
   headerActions: {
     flexDirection: "row",
@@ -1838,53 +2167,67 @@ const styles = StyleSheet.create({
   ingredientsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 12,
+    justifyContent: "space-between",
   },
   ingredientCard: {
     width: (SCREEN_WIDTH - 52) / 2,
     backgroundColor: COLORS.card,
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 16,
     alignItems: "center",
+    marginBottom: 12,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   ingredientCardIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: COLORS.primary + "15",
+    width: 56,
+    height: 56,
+    borderRadius: 16,
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 12,
   },
   ingredientCardName: {
     fontSize: 15,
-    fontWeight: "600",
+    fontWeight: "700",
     color: COLORS.text,
     textAlign: "center",
+    textTransform: "capitalize",
     marginBottom: 4,
   },
+  ingredientQuantityBadge: {
+    backgroundColor: COLORS.primary + '12',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    marginTop: 6,
+  },
   ingredientCardQuantity: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
+    fontSize: 12,
+    fontWeight: "600",
+    color: COLORS.primary,
     textAlign: "center",
   },
   ingredientCardActions: {
     flexDirection: "row",
-    gap: 12,
-    marginTop: 12,
+    gap: 16,
+    marginTop: 14,
   },
   ingredientActionBtn: {
     width: 36,
     height: 36,
     borderRadius: 10,
-    backgroundColor: COLORS.background,
+    backgroundColor: COLORS.primary + '10',
     justifyContent: "center",
     alignItems: "center",
+  },
+  deleteActionBtn: {
+    backgroundColor: COLORS.error + '10',
   },
   rescanButton: {
     flexDirection: "row",
@@ -1962,22 +2305,25 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: COLORS.card,
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 16,
     marginBottom: 10,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
+    shadowOpacity: 0.05,
     shadowRadius: 8,
     elevation: 2,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   shoppingItemChecked: {
-    backgroundColor: COLORS.primary + "10",
+    backgroundColor: COLORS.success + "08",
+    borderColor: COLORS.success + "30",
   },
   checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 26,
+    height: 26,
+    borderRadius: 8,
     borderWidth: 2,
     borderColor: COLORS.border,
     marginRight: 14,
@@ -2023,33 +2369,40 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: COLORS.card,
-    borderRadius: 24,
-    padding: 24,
+    borderRadius: 28,
+    padding: 28,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.15,
+    shadowRadius: 30,
+    elevation: 15,
   },
   modalHeader: {
     alignItems: "center",
-    marginBottom: 20,
+    marginBottom: 24,
   },
   modalIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
-    backgroundColor: COLORS.primary + "15",
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: COLORS.primary + "12",
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 16,
   },
   modalTitle: {
-    fontSize: 20,
-    fontWeight: "700",
+    fontSize: 22,
+    fontWeight: "800",
     color: COLORS.text,
     textAlign: "center",
+    letterSpacing: -0.3,
   },
   modalSubtitle: {
     fontSize: 14,
     color: COLORS.textSecondary,
     textAlign: "center",
-    marginTop: 4,
+    marginTop: 6,
+    lineHeight: 20,
   },
   apiInput: {
     height: 52,
@@ -2083,24 +2436,31 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   modalCancelText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "600",
     color: COLORS.textSecondary,
   },
   modalSaveBtn: {
     flex: 1,
-    height: 48,
-    borderRadius: 12,
+    height: 50,
+    borderRadius: 14,
     backgroundColor: COLORS.primary,
     justifyContent: "center",
     alignItems: "center",
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
   },
   modalSaveBtnDisabled: {
     backgroundColor: COLORS.textLight,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   modalSaveText: {
-    fontSize: 16,
-    fontWeight: "600",
+    fontSize: 15,
+    fontWeight: "700",
     color: "#fff",
   },
 
@@ -2333,17 +2693,30 @@ const styles = StyleSheet.create({
     position: "absolute",
     backgroundColor: COLORS.card,
     borderTopWidth: 0,
-    height: 80,
-    paddingBottom: 20,
-    paddingTop: 10,
+    height: 85,
+    paddingBottom: 24,
+    paddingTop: 8,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 8,
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
+    elevation: 10,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
   },
   tabBarLabel: {
     fontSize: 11,
     fontWeight: "600",
+    marginTop: 2,
+  },
+  tabIconContainer: {
+    width: 42,
+    height: 32,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  tabIconContainerActive: {
+    backgroundColor: COLORS.primary + '15',
   },
 });
