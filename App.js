@@ -430,19 +430,7 @@ function HomeTab({ navigation }) {
   const isFavorited = (recipe) => favorites.some((f) => f.id === recipe.id);
 
   const toggleCategory = (categoryId) => {
-    if (categoryId === 'all') {
-      setSelectedCategories(['all']);
-    } else {
-      setSelectedCategories(prev => {
-        const withoutAll = prev.filter(c => c !== 'all');
-        if (withoutAll.includes(categoryId)) {
-          const newSelection = withoutAll.filter(c => c !== categoryId);
-          return newSelection.length === 0 ? ['all'] : newSelection;
-        } else {
-          return [...withoutAll, categoryId];
-        }
-      });
-    }
+    setSelectedCategories([categoryId]);
   };
 
   const isAllSelected = selectedCategories.includes('all');
@@ -609,23 +597,10 @@ function HomeTab({ navigation }) {
                     <Text style={[styles.filterChipText, isSelected && styles.filterChipTextSelected]}>
                       {cat.label}
                     </Text>
-                    {isSelected && cat.id !== 'all' && (
-                      <View style={styles.filterChipCheck}>
-                        <Ionicons name="checkmark" size={12} color="#fff" />
-                      </View>
-                    )}
                   </TouchableOpacity>
                 );
               })}
             </ScrollView>
-            {!isAllSelected && selectedCategories.length > 0 && (
-              <TouchableOpacity 
-                style={styles.clearFiltersBtn}
-                onPress={() => setSelectedCategories(['all'])}
-              >
-                <Text style={styles.clearFiltersText}>Clear filters</Text>
-              </TouchableOpacity>
-            )}
           </View>
         )}
 
@@ -1633,27 +1608,6 @@ const styles = StyleSheet.create({
   },
   filterChipTextSelected: {
     color: "#fff",
-  },
-  filterChipCheck: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: "rgba(255,255,255,0.3)",
-    justifyContent: "center",
-    alignItems: "center",
-    marginLeft: 2,
-  },
-  clearFiltersBtn: {
-    alignSelf: "flex-start",
-    marginTop: 10,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-  },
-  clearFiltersText: {
-    fontSize: 13,
-    fontWeight: "500",
-    color: COLORS.primary,
-    textDecorationLine: "underline",
   },
   noResultsContainer: {
     alignItems: "center",
