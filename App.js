@@ -26,6 +26,11 @@ import * as ImagePicker from "expo-image-picker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons, MaterialCommunityIcons, Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import {
+  SafeAreaProvider,
+  useSafeAreaInsets,
+  SafeAreaView as SafeAreaViewEdges,
+} from "react-native-safe-area-context";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -1432,6 +1437,7 @@ function ShoppingListTab({ navigation }) {
 function RecipeDetailScreen({ route, navigation }) {
   const { recipe, userIngredients = [] } = route.params;
   const [isFavorited, setIsFavorited] = useState(false);
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     checkFavorite();
@@ -1508,68 +1514,70 @@ function RecipeDetailScreen({ route, navigation }) {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaViewEdges style={styles.container} edges={["left", "right", "bottom"]}>
       <StatusBar style="light" />
-      
-      <View style={styles.recipeDetailHeader}>
-        {recipe.image ? (
-          <Image source={{ uri: recipe.image }} style={styles.recipeHeroImage} />
-        ) : (
-          <View style={[styles.recipeHeroPlaceholder, { backgroundColor: getCategoryColor(recipe.category) }]}>
-            <Text style={styles.recipeHeroEmoji}>{recipe.emoji || '🍽️'}</Text>
-          </View>
-        )}
-        
-        <LinearGradient
-          colors={['transparent', 'rgba(0,0,0,0.7)']}
-          style={styles.heroGradient}
-        />
-        
-        <View style={styles.recipeDetailNav}>
-          <TouchableOpacity style={styles.navBtn} onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color="#fff" />
-          </TouchableOpacity>
-          <View style={styles.navRight}>
-            {recipe.youtube && (
-              <TouchableOpacity style={[styles.navBtn, { marginRight: 10 }]} onPress={openYoutube}>
-                <Ionicons name="logo-youtube" size={24} color="#FF0000" />
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity style={styles.navBtn} onPress={toggleFavorite}>
-              <Ionicons name={isFavorited ? "heart" : "heart-outline"} size={24} color={isFavorited ? COLORS.error : "#fff"} />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <View style={styles.recipeDetailTitleContainer}>
-          <View style={styles.recipeBadges}>
-            {recipe.category && (
-              <View style={[styles.categoryPillLarge, { backgroundColor: COLORS.primary }]}>
-                <Text style={styles.categoryPillTextLarge}>{recipe.category}</Text>
-              </View>
-            )}
-            {recipe.area && (
-              <View style={[styles.categoryPillLarge, { backgroundColor: COLORS.accent }]}>
-                <Ionicons name="globe-outline" size={14} color="#fff" />
-                <Text style={styles.categoryPillTextLarge}>{recipe.area}</Text>
-              </View>
-            )}
-          </View>
-          <Text style={styles.recipeDetailTitle}>{recipe.name}</Text>
-          {recipe.match_percent !== undefined && (
-            <View style={styles.matchInfo}>
-              <View style={[styles.matchBadgeLarge, { backgroundColor: recipe.match_percent >= 60 ? COLORS.success : recipe.match_percent >= 40 ? COLORS.warning : COLORS.textSecondary }]}>
-                <Text style={styles.matchBadgeLargeText}>{recipe.match_percent}% ingredient match</Text>
-              </View>
-              {recipe.missing_count > 0 && (
-                <Text style={styles.missingText}>Missing {recipe.missing_count} ingredients</Text>
-              )}
+      <ScrollView
+        style={styles.recipeDetailScroll}
+        contentContainerStyle={styles.recipeDetailScrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.recipeDetailHeader}>
+          {recipe.image ? (
+            <Image source={{ uri: recipe.image }} style={styles.recipeHeroImage} />
+          ) : (
+            <View style={[styles.recipeHeroPlaceholder, { backgroundColor: getCategoryColor(recipe.category) }]}>
+              <Text style={styles.recipeHeroEmoji}>{recipe.emoji || '🍽️'}</Text>
             </View>
           )}
-        </View>
-      </View>
 
-      <ScrollView style={styles.recipeDetailScroll}>
+          <LinearGradient
+            colors={["transparent", "rgba(0,0,0,0.7)"]}
+            style={styles.heroGradient}
+          />
+
+          <View style={[styles.recipeDetailNav, { paddingTop: insets.top + SPACING.sm }]}>
+            <TouchableOpacity style={styles.navBtn} onPress={() => navigation.goBack()}>
+              <Ionicons name="arrow-back" size={24} color="#fff" />
+            </TouchableOpacity>
+            <View style={styles.navRight}>
+              {recipe.youtube && (
+                <TouchableOpacity style={[styles.navBtn, { marginRight: 10 }]} onPress={openYoutube}>
+                  <Ionicons name="logo-youtube" size={24} color="#FF0000" />
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={styles.navBtn} onPress={toggleFavorite}>
+                <Ionicons name={isFavorited ? "heart" : "heart-outline"} size={24} color={isFavorited ? COLORS.error : "#fff"} />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={styles.recipeDetailTitleContainer}>
+            <View style={styles.recipeBadges}>
+              {recipe.category && (
+                <View style={[styles.categoryPillLarge, { backgroundColor: COLORS.primary }]}>
+                  <Text style={styles.categoryPillTextLarge}>{recipe.category}</Text>
+                </View>
+              )}
+              {recipe.area && (
+                <View style={[styles.categoryPillLarge, { backgroundColor: COLORS.accent }]}>
+                  <Ionicons name="globe-outline" size={14} color="#fff" />
+                  <Text style={styles.categoryPillTextLarge}>{recipe.area}</Text>
+                </View>
+              )}
+            </View>
+            <Text style={styles.recipeDetailTitle}>{recipe.name}</Text>
+            {recipe.match_percent !== undefined && (
+              <View style={styles.matchInfo}>
+                <View style={[styles.matchBadgeLarge, { backgroundColor: recipe.match_percent >= 60 ? COLORS.success : recipe.match_percent >= 40 ? COLORS.warning : COLORS.textSecondary }]}>
+                  <Text style={styles.matchBadgeLargeText}>{recipe.match_percent}% ingredient match</Text>
+                </View>
+                {recipe.missing_count > 0 && (
+                  <Text style={styles.missingText}>Missing {recipe.missing_count} ingredients</Text>
+                )}
+              </View>
+            )}
+          </View>
+        </View>
         {recipe.matched_ingredients && recipe.matched_ingredients.length > 0 && (
           <View style={styles.recipeDetailSection}>
             <View style={styles.recipeDetailSectionHeader}>
@@ -1656,7 +1664,7 @@ function RecipeDetailScreen({ route, navigation }) {
 
         <View style={{ height: 40 }} />
       </ScrollView>
-    </SafeAreaView>
+    </SafeAreaViewEdges>
   );
 }
 
@@ -1700,12 +1708,14 @@ function TabNavigator() {
 
 export default function App() {
   return (
-    <NavigationContainer>
-      <Stack.Navigator screenOptions={{ headerShown: false, animation: "slide_from_right" }}>
-        <Stack.Screen name="MainTabs" component={TabNavigator} />
-        <Stack.Screen name="RecipeDetail" component={RecipeDetailScreen} />
-      </Stack.Navigator>
-    </NavigationContainer>
+    <SafeAreaProvider>
+      <NavigationContainer>
+        <Stack.Navigator screenOptions={{ headerShown: false, animation: "slide_from_right" }}>
+          <Stack.Screen name="MainTabs" component={TabNavigator} />
+          <Stack.Screen name="RecipeDetail" component={RecipeDetailScreen} />
+        </Stack.Navigator>
+      </NavigationContainer>
+    </SafeAreaProvider>
   );
 }
 
@@ -2731,12 +2741,13 @@ const styles = StyleSheet.create({
   },
   recipeDetailNav: {
     position: "absolute",
-    top: 50,
+    top: 0,
     left: 0,
     right: 0,
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
+    alignItems: "flex-start",
+    paddingHorizontal: SPACING.xl,
   },
   navRight: {
     flexDirection: "row",
@@ -2804,6 +2815,10 @@ const styles = StyleSheet.create({
   recipeDetailScroll: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  recipeDetailScrollContent: {
+    flexGrow: 1,
+    paddingBottom: SPACING.xl,
   },
   recipeDetailSection: {
     paddingHorizontal: SPACING.xl,
