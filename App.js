@@ -217,8 +217,8 @@ const getIngredientIcon = (name) => {
   if (/vanilla/.test(lowered)) return { icon: 'flower', type: 'ion', color: '#F5DEB3' };
   if (/baking|yeast/.test(lowered)) return { icon: 'cube-outline', type: 'ion', color: '#FDEBD0' };
   
-  // Default
-  return { icon: 'nutrition-outline', type: 'ion', color: COLORS.primary };
+  // Default - universal food icon
+  return { icon: 'food-variant', type: 'mci', color: COLORS.primary };
 };
 
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
