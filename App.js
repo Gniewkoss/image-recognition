@@ -629,9 +629,9 @@ function HomeTab({ navigation }) {
                 </View>
               </View>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                {categoryRecipes.map((recipe) => (
+                {categoryRecipes.map((recipe, index) => (
                   <RecipeCard
-                    key={recipe.id}
+                    key={`${recipe.id}-${index}`}
                     recipe={recipe}
                     onPress={() => navigation.navigate("RecipeDetail", { recipe, userIngredients: ingredients })}
                     onFavorite={toggleFavorite}
@@ -943,9 +943,9 @@ function FavoritesTab({ navigation }) {
           />
         ) : (
           <View style={styles.favoritesGrid}>
-            {favorites.map((recipe) => (
+            {favorites.map((recipe, index) => (
               <RecipeCard
-                key={recipe.id}
+                key={`${recipe.id}-${index}`}
                 recipe={recipe}
                 onPress={() => navigation.navigate("RecipeDetail", { recipe })}
                 onFavorite={removeFavorite}
