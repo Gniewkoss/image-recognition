@@ -7,7 +7,7 @@ import requests
 import os
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from urllib.parse import urljoin, urlparse
+from urllib.parse import quote, urljoin, urlparse
 
 app = Flask(__name__)
 CORS(app)
@@ -261,12 +261,234 @@ def fetch_original_recipe_image(source_url, timeout=5):
         return None
 
 
+# --- Allrecipes (search HTML + JSON-LD on recipe pages; no official API) ---
+ALLRECIPES_ORIGIN = "https://www.allrecipes.com"
+
+
+def fetch_allrecipes_search_urls(query, limit=14):
+    """Collect recipe page URLs from Allrecipes search results."""
+    if not query or len(query.strip()) < 2:
+        return []
+    try:
+        q = quote(query.strip(), safe="")
+        url = f"{ALLRECIPES_ORIGIN}/search?q={q}"
+        r = requests.get(url, headers=SOURCE_PAGE_HEADERS, timeout=14)
+        r.raise_for_status()
+        html = r.text
+    except Exception as e:
+        print(f"Allrecipes search error ({query}): {e}")
+        return []
+
+    urls = []
+    seen = set()
+    for m in re.finditer(
+        r'href="(https://www\.allrecipes\.com/recipe/\d+/[^"?\#]+)',
+        html,
+        re.I,
+    ):
+        u = m.group(1).split("?")[0].rstrip("/") + "/"
+        if u not in seen:
+            seen.add(u)
+            urls.append(u)
+        if len(urls) >= limit:
+            return urls
+
+    for m in re.finditer(r'href="(/recipe/\d+/[a-z0-9-]+)/?"', html, re.I):
+        u = urljoin(ALLRECIPES_ORIGIN, m.group(1))
+        u = u.split("?")[0].rstrip("/") + "/"
+        if u not in seen:
+            seen.add(u)
+            urls.append(u)
+        if len(urls) >= limit:
+            break
+    return urls[:limit]
+
+
+def _is_recipe_ld_type(obj):
+    if not isinstance(obj, dict):
+        return False
+    t = obj.get("@type")
+    if t == "Recipe":
+        return True
+    if isinstance(t, list):
+        return any(str(x).strip().lower() == "recipe" for x in t)
+    return str(t).strip().lower() == "recipe"
+
+
+def _find_recipe_object_in_jsonld(data):
+    """Walk JSON-LD and return the first schema.org Recipe object."""
+    if isinstance(data, dict):
+        if _is_recipe_ld_type(data):
+            return data
+        for key in ("@graph", "mainEntity", "itemListElement"):
+            if key in data:
+                found = _find_recipe_object_in_jsonld(data[key])
+                if found:
+                    return found
+        for v in data.values():
+            found = _find_recipe_object_in_jsonld(v)
+            if found:
+                return found
+    elif isinstance(data, list):
+        for item in data:
+            found = _find_recipe_object_in_jsonld(item)
+            if found:
+                return found
+    return None
+
+
+def _parse_recipe_instructions_ld(instr):
+    if not instr:
+        return []
+    steps = []
+    if isinstance(instr, str):
+        for line in re.split(r"\n+", instr):
+            line = line.strip()
+            if len(line) > 5:
+                steps.append(line)
+        return steps[:24]
+    if isinstance(instr, dict):
+        instr = [instr]
+    if isinstance(instr, list):
+        for item in instr:
+            if isinstance(item, str) and item.strip():
+                steps.append(item.strip())
+            elif isinstance(item, dict):
+                t = item.get("@type")
+                if t == "HowToStep":
+                    txt = item.get("text")
+                    if isinstance(txt, str) and txt.strip():
+                        steps.append(txt.strip())
+                    elif isinstance(txt, list):
+                        for x in txt:
+                            if isinstance(x, str) and x.strip():
+                                steps.append(x.strip())
+                elif t == "HowToSection":
+                    for el in item.get("itemListElement") or []:
+                        if isinstance(el, dict):
+                            if el.get("text"):
+                                steps.append(str(el["text"]).strip())
+                            elif el.get("itemListElement"):
+                                steps.extend(_parse_recipe_instructions_ld(el["itemListElement"]))
+                        elif isinstance(el, str) and el.strip():
+                            steps.append(el.strip())
+    return [s for s in steps if s][:24]
+
+
+def _jsonld_image_url(image_field):
+    if not image_field:
+        return ""
+    if isinstance(image_field, str):
+        return image_field
+    if isinstance(image_field, list) and image_field:
+        first = image_field[0]
+        if isinstance(first, str):
+            return first
+        if isinstance(first, dict):
+            return first.get("url") or first.get("contentUrl") or ""
+    if isinstance(image_field, dict):
+        return image_field.get("url") or image_field.get("contentUrl") or ""
+    return ""
+
+
+def extract_allrecipes_recipe_from_html(html, page_url):
+    """Parse Recipe JSON-LD from an Allrecipes (or similar) HTML page."""
+    for m in re.finditer(
+        r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>([\s\S]*?)</script>',
+        html,
+        re.I,
+    ):
+        raw = m.group(1).strip()
+        if not raw:
+            continue
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        recipe_obj = _find_recipe_object_in_jsonld(data)
+        if not recipe_obj:
+            continue
+        name = recipe_obj.get("name") or "Recipe"
+        if isinstance(name, list):
+            name = name[0] if name else "Recipe"
+        recipe_ing = recipe_obj.get("recipeIngredient") or []
+        if isinstance(recipe_ing, str):
+            recipe_ing = [recipe_ing]
+        ingredients = []
+        for line in recipe_ing:
+            if isinstance(line, str) and line.strip():
+                ingredients.append({"name": line.strip(), "measure": ""})
+        if len(ingredients) < 2:
+            continue
+        steps = _parse_recipe_instructions_ld(recipe_obj.get("recipeInstructions"))
+        cat = recipe_obj.get("recipeCategory")
+        if isinstance(cat, list):
+            cat = cat[0] if cat else "Main"
+        if not cat:
+            cat = "Main"
+        cuisine = recipe_obj.get("recipeCuisine") or ""
+        if isinstance(cuisine, list):
+            cuisine = cuisine[0] if cuisine else ""
+        vid = recipe_obj.get("video")
+        youtube = ""
+        if isinstance(vid, dict):
+            youtube = vid.get("contentUrl") or ""
+
+        m = re.search(r"/recipe/(\d+)/", page_url)
+        rid = f"ar_{m.group(1)}" if m else f"ar_{abs(hash(page_url)) % 10 ** 9}"
+
+        return {
+            "id": rid,
+            "name": str(name).strip(),
+            "category": str(cat),
+            "area": str(cuisine).strip() if cuisine else "American",
+            "image": _jsonld_image_url(recipe_obj.get("image")),
+            "source": page_url.split("?")[0],
+            "youtube": youtube,
+            "ingredients": ingredients,
+            "steps": steps if steps else ["See full recipe on Allrecipes (instructions in app may be abbreviated)."],
+        }
+    return None
+
+
+def fetch_allrecipes_recipe_for_match(url, user_ingredients):
+    """Fetch one Allrecipes page, parse JSON-LD, filter by ingredient match."""
+    try:
+        r = requests.get(url, headers=SOURCE_PAGE_HEADERS, timeout=14, allow_redirects=True)
+        r.raise_for_status()
+        ctype = (r.headers.get("Content-Type") or "").lower()
+        if "html" not in ctype:
+            return None
+        parsed = extract_allrecipes_recipe_from_html(r.text, r.url)
+        if not parsed:
+            return None
+        match_info = calculate_match(parsed["ingredients"], user_ingredients)
+        if match_info["match_percent"] < 20 or match_info["missing_count"] > 10:
+            return None
+        parsed.update(match_info)
+        return parsed
+    except Exception as e:
+        print(f"Allrecipes recipe fetch error {url}: {e}")
+        return None
+
+
+def fetch_allrecipes_detail_by_id(ar_numeric_id):
+    """Load recipe by Allrecipes numeric id (slug optional via redirect)."""
+    url = f"{ALLRECIPES_ORIGIN}/recipe/{ar_numeric_id}/"
+    r = requests.get(url, headers=SOURCE_PAGE_HEADERS, timeout=16, allow_redirects=True)
+    r.raise_for_status()
+    parsed = extract_allrecipes_recipe_from_html(r.text, r.url)
+    return parsed
+
+
 def enrich_recipes_with_source_images(recipes, max_workers=6):
     """Replace image with og:image from recipe source site when available (parallel)."""
     tasks = []
     for i, r in enumerate(recipes):
         sid = r.get("id")
         if sid is None or (isinstance(sid, str) and sid.startswith("simple_")):
+            continue
+        if isinstance(sid, str) and sid.startswith("ar_") and r.get("image"):
             continue
         src = r.get("source")
         if not src:
@@ -421,6 +643,38 @@ def search_recipes():
             all_recipes.append(recipe)
             seen_ids.add(meal_id)
         
+        # 3. Allrecipes — search by ingredient keywords, parse JSON-LD on recipe pages
+        if os.environ.get("DISABLE_ALLRECIPES", "").lower() not in ("1", "true", "yes"):
+            ar_seen_urls = set()
+            ar_urls = []
+            for ing in search_ingredients[:6]:
+                term = normalize_ingredient(ing).split()[0]
+                if len(term) < 2:
+                    continue
+                for u in fetch_allrecipes_search_urls(term, limit=12):
+                    if u not in ar_seen_urls:
+                        ar_seen_urls.add(u)
+                        ar_urls.append(u)
+                    if len(ar_urls) >= 28:
+                        break
+                if len(ar_urls) >= 28:
+                    break
+            print(f"Allrecipes: collected {len(ar_urls)} unique recipe URLs")
+
+            def _fetch_ar(u):
+                return fetch_allrecipes_recipe_for_match(u, ingredients)
+
+            with ThreadPoolExecutor(max_workers=3) as pool:
+                futs = [pool.submit(_fetch_ar, u) for u in ar_urls[:16]]
+                for fut in as_completed(futs):
+                    try:
+                        ar_recipe = fut.result()
+                        if ar_recipe and ar_recipe["id"] not in seen_ids:
+                            all_recipes.append(ar_recipe)
+                            seen_ids.add(ar_recipe["id"])
+                    except Exception as e:
+                        print(f"Allrecipes worker: {e}")
+        
         all_recipes.sort(key=lambda x: (x['missing_count'], -x['match_percent']))
         
         # Prefer hero images from the original recipe site (Open Graph) when strSource exists
@@ -434,14 +688,15 @@ def search_recipes():
         }
         
         for recipe in all_recipes:
-            if recipe['id'].startswith('simple_') and recipe['missing_count'] <= 2:
-                categorized['Quick & Easy'].append(recipe)
-            elif recipe['missing_count'] <= 2:
-                categorized['Best Matches'].append(recipe)
-            elif recipe['missing_count'] <= 4:
-                categorized['Good Options'].append(recipe)
+            rid = str(recipe["id"])
+            if rid.startswith("simple_") and recipe["missing_count"] <= 2:
+                categorized["Quick & Easy"].append(recipe)
+            elif recipe["missing_count"] <= 2:
+                categorized["Best Matches"].append(recipe)
+            elif recipe["missing_count"] <= 4:
+                categorized["Good Options"].append(recipe)
             else:
-                categorized['More Ideas'].append(recipe)
+                categorized["More Ideas"].append(recipe)
         
         for key in categorized:
             categorized[key] = categorized[key][:8]
@@ -466,6 +721,19 @@ def get_recipe(meal_id):
         for recipe in SIMPLE_RECIPES:
             if recipe['id'] == meal_id:
                 return jsonify(recipe)
+        
+        if isinstance(meal_id, str) and meal_id.startswith("ar_"):
+            num = meal_id[3:].strip()
+            if not num.isdigit():
+                return jsonify({"error": "Invalid Allrecipes id"}), 400
+            try:
+                parsed = fetch_allrecipes_detail_by_id(num)
+            except Exception as e:
+                print(f"Allrecipes detail error: {e}")
+                return jsonify({"error": "Recipe not found"}), 404
+            if not parsed:
+                return jsonify({"error": "Recipe not found"}), 404
+            return jsonify(parsed)
         
         meal = fetch_meal_details(meal_id)
         if not meal:
