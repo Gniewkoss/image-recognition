@@ -16,7 +16,7 @@ import {
   Share,
   Animated,
   Dimensions,
-  FlatList,
+  Linking,
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { NavigationContainer } from "@react-navigation/native";
@@ -59,34 +59,14 @@ const COLORS = {
   gradient: ["#4CAF50", "#81C784"],
 };
 
-const CATEGORY_CONFIG = {
-  Breakfast: { color: "#FF9800", icon: "sunny-outline", emoji: "🌅" },
-  Lunch: { color: "#4CAF50", icon: "restaurant-outline", emoji: "🥗" },
-  Dinner: { color: "#7E57C2", icon: "moon-outline", emoji: "🍽️" },
-  Snack: { color: "#FFB74D", icon: "cafe-outline", emoji: "🍿" },
-  Dessert: { color: "#E91E63", icon: "ice-cream-outline", emoji: "🍰" },
-  Salad: { color: "#66BB6A", icon: "leaf-outline", emoji: "🥬" },
-  Soup: { color: "#FF7043", icon: "water-outline", emoji: "🍲" },
-  Drink: { color: "#42A5F5", icon: "wine-outline", emoji: "🥤" },
-  All: { color: "#78909C", icon: "grid-outline", emoji: "📋" },
-};
-
 const SkeletonLoader = ({ width, height, style }) => {
   const animatedValue = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     const animation = Animated.loop(
       Animated.sequence([
-        Animated.timing(animatedValue, {
-          toValue: 1,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
-        Animated.timing(animatedValue, {
-          toValue: 0,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
+        Animated.timing(animatedValue, { toValue: 1, duration: 1000, useNativeDriver: true }),
+        Animated.timing(animatedValue, { toValue: 0, duration: 1000, useNativeDriver: true }),
       ])
     );
     animation.start();
@@ -100,16 +80,7 @@ const SkeletonLoader = ({ width, height, style }) => {
 
   return (
     <Animated.View
-      style={[
-        {
-          width,
-          height,
-          backgroundColor: "#E0E0E0",
-          borderRadius: 12,
-          opacity,
-        },
-        style,
-      ]}
+      style={[{ width, height, backgroundColor: "#E0E0E0", borderRadius: 12, opacity }, style]}
     />
   );
 };
@@ -129,22 +100,29 @@ const EmptyState = ({ icon, title, subtitle, actionText, onAction }) => (
   </View>
 );
 
+const MatchBadge = ({ percent }) => {
+  const getColor = () => {
+    if (percent >= 60) return COLORS.success;
+    if (percent >= 40) return COLORS.warning;
+    return COLORS.textSecondary;
+  };
+
+  return (
+    <View style={[styles.matchBadge, { backgroundColor: getColor() }]}>
+      <Text style={styles.matchBadgeText}>{percent}% match</Text>
+    </View>
+  );
+};
+
 const RecipeCard = ({ recipe, onPress, onFavorite, isFavorited, compact }) => {
   const scaleAnim = useRef(new Animated.Value(1)).current;
-  const categoryConfig = CATEGORY_CONFIG[recipe.category] || CATEGORY_CONFIG.All;
 
   const handlePressIn = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 0.97,
-      useNativeDriver: true,
-    }).start();
+    Animated.spring(scaleAnim, { toValue: 0.97, useNativeDriver: true }).start();
   };
 
   const handlePressOut = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 1,
-      useNativeDriver: true,
-    }).start();
+    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true }).start();
   };
 
   return (
@@ -157,9 +135,13 @@ const RecipeCard = ({ recipe, onPress, onFavorite, isFavorited, compact }) => {
         activeOpacity={1}
       >
         <View style={[styles.recipeImageContainer, compact && styles.recipeImageContainerCompact]}>
-          <View style={[styles.recipeImagePlaceholder, { backgroundColor: `${categoryConfig.color}20` }]}>
-            <Text style={styles.recipeEmoji}>{categoryConfig.emoji}</Text>
-          </View>
+          {recipe.image ? (
+            <Image source={{ uri: recipe.image }} style={styles.recipeImage} />
+          ) : (
+            <View style={styles.recipeImagePlaceholder}>
+              <Ionicons name="restaurant-outline" size={32} color={COLORS.textLight} />
+            </View>
+          )}
           <TouchableOpacity
             style={styles.favoriteButton}
             onPress={(e) => {
@@ -173,26 +155,31 @@ const RecipeCard = ({ recipe, onPress, onFavorite, isFavorited, compact }) => {
               color={isFavorited ? COLORS.error : "#fff"}
             />
           </TouchableOpacity>
-          <View style={[styles.categoryPill, { backgroundColor: categoryConfig.color }]}>
-            <Text style={styles.categoryPillText}>{recipe.category}</Text>
-          </View>
+          {recipe.match_percent !== undefined && (
+            <MatchBadge percent={recipe.match_percent} />
+          )}
         </View>
         <View style={styles.recipeCardContent}>
           <Text style={styles.recipeCardTitle} numberOfLines={2}>{recipe.name}</Text>
           <View style={styles.recipeCardMeta}>
-            {recipe.time && (
+            {recipe.category && (
               <View style={styles.metaItem}>
-                <Ionicons name="time-outline" size={14} color={COLORS.textSecondary} />
-                <Text style={styles.metaText}>{recipe.time}</Text>
+                <Ionicons name="pricetag-outline" size={12} color={COLORS.textSecondary} />
+                <Text style={styles.metaText}>{recipe.category}</Text>
               </View>
             )}
-            {recipe.difficulty && (
-              <View style={styles.metaItem}>
-                <Ionicons name="speedometer-outline" size={14} color={COLORS.textSecondary} />
-                <Text style={styles.metaText}>{recipe.difficulty}</Text>
+            {recipe.missing_count > 0 && (
+              <View style={[styles.metaItem, styles.missingBadge]}>
+                <Ionicons name="cart-outline" size={12} color={COLORS.warning} />
+                <Text style={[styles.metaText, { color: COLORS.warning }]}>
+                  +{recipe.missing_count} items
+                </Text>
               </View>
             )}
           </View>
+          {recipe.area && (
+            <Text style={styles.recipeArea}>{recipe.area} cuisine</Text>
+          )}
         </View>
       </TouchableOpacity>
     </Animated.View>
@@ -221,12 +208,13 @@ const IngredientChip = ({ ingredient, onRemove, editable }) => (
 function HomeTab({ navigation }) {
   const [ingredients, setIngredients] = useState([]);
   const [recipes, setRecipes] = useState([]);
+  const [categorizedRecipes, setCategorizedRecipes] = useState({});
   const [favorites, setFavorites] = useState([]);
   const [scanning, setScanning] = useState(false);
+  const [searchingRecipes, setSearchingRecipes] = useState(false);
   const [apiKey, setApiKey] = useState("");
   const [showApiModal, setShowApiModal] = useState(false);
   const [tempApiKey, setTempApiKey] = useState("");
-  const scanAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     loadData();
@@ -247,7 +235,11 @@ function HomeTab({ navigation }) {
       ]);
       if (savedKey) setApiKey(savedKey);
       if (savedIngredients) setIngredients(JSON.parse(savedIngredients));
-      if (savedRecipes) setRecipes(JSON.parse(savedRecipes));
+      if (savedRecipes) {
+        const parsed = JSON.parse(savedRecipes);
+        setRecipes(parsed.recipes || []);
+        setCategorizedRecipes(parsed.categorized || {});
+      }
       if (savedFavorites) setFavorites(JSON.parse(savedFavorites));
     } catch (e) {
       console.error("Failed to load data:", e);
@@ -303,18 +295,9 @@ function HomeTab({ navigation }) {
 
   const analyzeImage = async (base64, imageUri) => {
     setScanning(true);
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(scanAnim, { toValue: 1, duration: 1500, useNativeDriver: true }),
-        Animated.timing(scanAnim, { toValue: 0, duration: 1500, useNativeDriver: true }),
-      ])
-    ).start();
 
     try {
-      console.log("Starting analysis...");
-      console.log("API Key present:", !!apiKey);
-      console.log("Image base64 length:", base64?.length);
-      
+      console.log("Extracting ingredients...");
       const response = await fetch(`${SERVER_URL}/analyze`, {
         method: "POST",
         headers: {
@@ -324,67 +307,90 @@ function HomeTab({ navigation }) {
         body: JSON.stringify({ image_base64: base64, api_key: apiKey }),
       });
 
-      console.log("Response status:", response.status);
-
       if (!response.ok) {
         const errorText = await response.text();
-        console.error("Server error:", errorText);
         throw new Error(errorText || "Analysis failed");
       }
 
       const data = await response.json();
-      console.log("Analysis result:", JSON.stringify(data).substring(0, 500));
+      const newIngredients = data.ingredients || [];
       
-      const result = data.result || data;
-      const newIngredients = result.products || [];
-      const newRecipes = result.recipes || [];
-
+      console.log("Found ingredients:", newIngredients.length);
       setIngredients(newIngredients);
-      setRecipes(newRecipes);
+      await AsyncStorage.setItem(INGREDIENTS_STORAGE, JSON.stringify(newIngredients));
 
-      await Promise.all([
-        AsyncStorage.setItem(INGREDIENTS_STORAGE, JSON.stringify(newIngredients)),
-        AsyncStorage.setItem(RECIPES_STORAGE, JSON.stringify(newRecipes)),
-      ]);
-
+      // Save to history
       const historyEntry = {
         id: Date.now().toString(),
         date: new Date().toISOString(),
         imageUri,
-        products: newIngredients,
-        recipes: newRecipes,
+        ingredients: newIngredients,
       };
       const savedHistory = await AsyncStorage.getItem(HISTORY_STORAGE);
       const history = savedHistory ? JSON.parse(savedHistory) : [];
       await AsyncStorage.setItem(HISTORY_STORAGE, JSON.stringify([historyEntry, ...history].slice(0, 30)));
 
+      // Now search for recipes
+      if (newIngredients.length > 0) {
+        await searchRecipes(newIngredients);
+      }
+
     } catch (e) {
       console.error("Analysis error:", e);
-      const errorMessage = e.message || "Unknown error";
-      Alert.alert("Analysis Failed", errorMessage.includes("API") ? errorMessage : "Could not connect to the server. Please check your connection and try again.");
+      Alert.alert("Analysis Failed", e.message || "Could not analyze image.");
     } finally {
       setScanning(false);
-      scanAnim.stopAnimation();
+    }
+  };
+
+  const searchRecipes = async (ingredientsList) => {
+    setSearchingRecipes(true);
+    
+    try {
+      console.log("Searching recipes...");
+      const response = await fetch(`${SERVER_URL}/search-recipes`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "ngrok-skip-browser-warning": "true",
+        },
+        body: JSON.stringify({ ingredients: ingredientsList }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || "Recipe search failed");
+      }
+
+      const data = await response.json();
+      console.log("Found recipes:", data.total);
+      
+      setRecipes(data.recipes || []);
+      setCategorizedRecipes(data.categorized || {});
+      
+      await AsyncStorage.setItem(RECIPES_STORAGE, JSON.stringify({
+        recipes: data.recipes || [],
+        categorized: data.categorized || {},
+      }));
+
+    } catch (e) {
+      console.error("Recipe search error:", e);
+      Alert.alert("Search Failed", "Could not find recipes. Please try again.");
+    } finally {
+      setSearchingRecipes(false);
     }
   };
 
   const toggleFavorite = async (recipe) => {
-    const isFav = favorites.some((f) => f.name === recipe.name);
+    const isFav = favorites.some((f) => f.id === recipe.id);
     const updated = isFav
-      ? favorites.filter((f) => f.name !== recipe.name)
+      ? favorites.filter((f) => f.id !== recipe.id)
       : [{ ...recipe, savedAt: new Date().toISOString() }, ...favorites];
     setFavorites(updated);
     await AsyncStorage.setItem(FAVORITES_STORAGE, JSON.stringify(updated));
   };
 
-  const isFavorited = (recipe) => favorites.some((f) => f.name === recipe.name);
-
-  const recipesByCategory = recipes.reduce((acc, recipe) => {
-    const cat = recipe.category || "All";
-    if (!acc[cat]) acc[cat] = [];
-    acc[cat].push(recipe);
-    return acc;
-  }, {});
+  const isFavorited = (recipe) => favorites.some((f) => f.id === recipe.id);
 
   const greeting = () => {
     const hour = new Date().getHours();
@@ -417,10 +423,10 @@ function HomeTab({ navigation }) {
               { text: "Cancel", style: "cancel" },
             ]);
           }}
-          disabled={scanning}
+          disabled={scanning || searchingRecipes}
         >
           <LinearGradient
-            colors={scanning ? ["#9E9E9E", "#BDBDBD"] : COLORS.gradient}
+            colors={scanning || searchingRecipes ? ["#9E9E9E", "#BDBDBD"] : COLORS.gradient}
             style={styles.scanButtonGradient}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
@@ -428,7 +434,12 @@ function HomeTab({ navigation }) {
             {scanning ? (
               <View style={styles.scanningContent}>
                 <ActivityIndicator color="#fff" size="small" />
-                <Text style={styles.scanButtonText}>Scanning your fridge...</Text>
+                <Text style={styles.scanButtonText}>Detecting ingredients...</Text>
+              </View>
+            ) : searchingRecipes ? (
+              <View style={styles.scanningContent}>
+                <ActivityIndicator color="#fff" size="small" />
+                <Text style={styles.scanButtonText}>Finding recipes...</Text>
               </View>
             ) : (
               <>
@@ -436,7 +447,7 @@ function HomeTab({ navigation }) {
                   <Ionicons name="scan-outline" size={32} color="#fff" />
                 </View>
                 <Text style={styles.scanButtonText}>Scan Your Fridge</Text>
-                <Text style={styles.scanButtonSubtext}>Take a photo to detect ingredients</Text>
+                <Text style={styles.scanButtonSubtext}>AI detects ingredients, we find real recipes</Text>
               </>
             )}
           </LinearGradient>
@@ -445,9 +456,9 @@ function HomeTab({ navigation }) {
         {ingredients.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Detected Ingredients</Text>
+              <Text style={styles.sectionTitle}>Your Ingredients</Text>
               <TouchableOpacity onPress={() => navigation.navigate("IngredientsTab")}>
-                <Text style={styles.seeAllText}>See all</Text>
+                <Text style={styles.seeAllText}>Edit</Text>
               </TouchableOpacity>
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.ingredientsScroll}>
@@ -460,57 +471,71 @@ function HomeTab({ navigation }) {
                 </View>
               )}
             </ScrollView>
+            {recipes.length > 0 && (
+              <TouchableOpacity 
+                style={styles.refreshRecipesBtn}
+                onPress={() => searchRecipes(ingredients)}
+                disabled={searchingRecipes}
+              >
+                <Ionicons name="refresh-outline" size={16} color={COLORS.primary} />
+                <Text style={styles.refreshRecipesText}>Refresh recipes</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
 
-        {scanning && (
+        {(scanning || searchingRecipes) && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Generating recipes...</Text>
+            <Text style={styles.sectionTitle}>Finding recipes...</Text>
             <View style={styles.skeletonRow}>
-              <SkeletonLoader width={160} height={200} style={{ marginRight: 12 }} />
-              <SkeletonLoader width={160} height={200} style={{ marginRight: 12 }} />
-              <SkeletonLoader width={160} height={200} />
+              <SkeletonLoader width={SCREEN_WIDTH * 0.42} height={200} style={{ marginRight: 12 }} />
+              <SkeletonLoader width={SCREEN_WIDTH * 0.42} height={200} />
             </View>
           </View>
         )}
 
-        {!scanning && recipes.length === 0 && ingredients.length === 0 && (
+        {!scanning && !searchingRecipes && recipes.length === 0 && ingredients.length === 0 && (
           <EmptyState
             icon="restaurant-outline"
             title="No ingredients yet"
-            subtitle="Scan your fridge to discover what you can cook!"
+            subtitle="Scan your fridge to discover real recipes from around the world!"
             actionText="Scan Now"
             onAction={() => startScan(true)}
           />
         )}
 
-        {!scanning && Object.keys(recipesByCategory).map((category) => (
-          <View key={category} style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <View style={styles.sectionTitleRow}>
-                <Text style={styles.categoryEmoji}>
-                  {CATEGORY_CONFIG[category]?.emoji || "📋"}
-                </Text>
-                <Text style={styles.sectionTitle}>{category}</Text>
+        {!scanning && !searchingRecipes && Object.entries(categorizedRecipes).map(([category, categoryRecipes]) => {
+          if (!categoryRecipes || categoryRecipes.length === 0) return null;
+          return (
+            <View key={category} style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <View style={styles.sectionTitleRow}>
+                  <Ionicons 
+                    name={category === 'Best Matches' ? 'star' : category === 'Good Matches' ? 'thumbs-up' : 'list'} 
+                    size={18} 
+                    color={category === 'Best Matches' ? COLORS.warning : COLORS.primary} 
+                  />
+                  <Text style={styles.sectionTitle}>{category}</Text>
+                </View>
+                <View style={styles.countBadge}>
+                  <Text style={styles.countText}>{categoryRecipes.length}</Text>
+                </View>
               </View>
-              <View style={styles.countBadge}>
-                <Text style={styles.countText}>{recipesByCategory[category].length}</Text>
-              </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                {categoryRecipes.map((recipe) => (
+                  <RecipeCard
+                    key={recipe.id}
+                    recipe={recipe}
+                    onPress={() => navigation.navigate("RecipeDetail", { recipe, userIngredients: ingredients })}
+                    onFavorite={toggleFavorite}
+                    isFavorited={isFavorited(recipe)}
+                    compact
+                  />
+                ))}
+              </ScrollView>
             </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {recipesByCategory[category].map((recipe, i) => (
-                <RecipeCard
-                  key={i}
-                  recipe={recipe}
-                  onPress={() => navigation.navigate("RecipeDetail", { recipe })}
-                  onFavorite={toggleFavorite}
-                  isFavorited={isFavorited(recipe)}
-                  compact
-                />
-              ))}
-            </ScrollView>
-          </View>
-        ))}
+          );
+        })}
 
         <View style={{ height: 100 }} />
       </ScrollView>
@@ -523,7 +548,7 @@ function HomeTab({ navigation }) {
                 <Ionicons name="key-outline" size={28} color={COLORS.primary} />
               </View>
               <Text style={styles.modalTitle}>OpenAI API Key</Text>
-              <Text style={styles.modalSubtitle}>Required for AI-powered food recognition</Text>
+              <Text style={styles.modalSubtitle}>Required for AI ingredient detection</Text>
             </View>
             <TextInput
               style={styles.apiInput}
@@ -618,10 +643,6 @@ function IngredientsTab({ navigation }) {
     setShowAddModal(false);
   };
 
-  const rescanFridge = () => {
-    navigation.navigate("HomeTab");
-  };
-
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -650,7 +671,7 @@ function IngredientsTab({ navigation }) {
             title="No ingredients yet"
             subtitle="Scan your fridge to get started"
             actionText="Scan Fridge"
-            onAction={rescanFridge}
+            onAction={() => navigation.navigate("HomeTab")}
           />
         ) : (
           <View style={styles.ingredientsGrid}>
@@ -676,9 +697,9 @@ function IngredientsTab({ navigation }) {
           </View>
         )}
 
-        <TouchableOpacity style={styles.rescanButton} onPress={rescanFridge}>
-          <Ionicons name="refresh-outline" size={20} color={COLORS.primary} />
-          <Text style={styles.rescanButtonText}>Rescan Fridge</Text>
+        <TouchableOpacity style={styles.rescanButton} onPress={() => navigation.navigate("HomeTab")}>
+          <Ionicons name="scan-outline" size={20} color={COLORS.primary} />
+          <Text style={styles.rescanButtonText}>Scan Fridge Again</Text>
         </TouchableOpacity>
 
         <View style={{ height: 100 }} />
@@ -746,7 +767,6 @@ function IngredientsTab({ navigation }) {
 function FavoritesTab({ navigation }) {
   const [favorites, setFavorites] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedCategory, setSelectedCategory] = useState("All");
 
   useEffect(() => {
     loadFavorites();
@@ -766,15 +786,10 @@ function FavoritesTab({ navigation }) {
   };
 
   const removeFavorite = async (recipe) => {
-    const updated = favorites.filter((f) => f.name !== recipe.name);
+    const updated = favorites.filter((f) => f.id !== recipe.id);
     setFavorites(updated);
     await AsyncStorage.setItem(FAVORITES_STORAGE, JSON.stringify(updated));
   };
-
-  const categories = ["All", ...new Set(favorites.map((r) => r.category).filter(Boolean))];
-  const filteredFavorites = selectedCategory === "All"
-    ? favorites
-    : favorites.filter((r) => r.category === selectedCategory);
 
   if (loading) {
     return (
@@ -796,22 +811,6 @@ function FavoritesTab({ navigation }) {
         </View>
       </View>
 
-      {favorites.length > 0 && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
-          {categories.map((cat) => (
-            <TouchableOpacity
-              key={cat}
-              style={[styles.filterChip, selectedCategory === cat && styles.filterChipActive]}
-              onPress={() => setSelectedCategory(cat)}
-            >
-              <Text style={[styles.filterChipText, selectedCategory === cat && styles.filterChipTextActive]}>
-                {cat}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      )}
-
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         {favorites.length === 0 ? (
           <EmptyState
@@ -821,9 +820,9 @@ function FavoritesTab({ navigation }) {
           />
         ) : (
           <View style={styles.favoritesGrid}>
-            {filteredFavorites.map((recipe, i) => (
+            {favorites.map((recipe) => (
               <RecipeCard
-                key={i}
+                key={recipe.id}
                 recipe={recipe}
                 onPress={() => navigation.navigate("RecipeDetail", { recipe })}
                 onFavorite={removeFavorite}
@@ -899,16 +898,6 @@ function ShoppingListTab({ navigation }) {
     }
   };
 
-  const copyList = async () => {
-    const unchecked = shoppingList.filter((item) => !item.checked);
-    if (unchecked.length === 0) {
-      Alert.alert("Empty List", "No items to copy.");
-      return;
-    }
-    const text = unchecked.map((item) => `• ${item.name}`).join("\n");
-    Alert.alert("Copied!", "Shopping list copied to clipboard.");
-  };
-
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -928,9 +917,6 @@ function ShoppingListTab({ navigation }) {
         <View style={styles.headerActions}>
           <TouchableOpacity style={styles.headerBtn} onPress={shareList}>
             <Ionicons name="share-outline" size={22} color={COLORS.text} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.headerBtn} onPress={copyList}>
-            <Ionicons name="copy-outline" size={22} color={COLORS.text} />
           </TouchableOpacity>
         </View>
       </View>
@@ -955,7 +941,7 @@ function ShoppingListTab({ navigation }) {
           <EmptyState
             icon="cart-outline"
             title="Your list is empty"
-            subtitle="Add items or generate from recipes"
+            subtitle="Add items or add missing ingredients from recipes"
           />
         ) : (
           <>
@@ -980,7 +966,7 @@ function ShoppingListTab({ navigation }) {
             {checkedCount > 0 && (
               <TouchableOpacity style={styles.clearCheckedBtn} onPress={clearChecked}>
                 <Ionicons name="trash-outline" size={18} color={COLORS.error} />
-                <Text style={styles.clearCheckedText}>Clear {checkedCount} checked items</Text>
+                <Text style={styles.clearCheckedText}>Clear {checkedCount} checked</Text>
               </TouchableOpacity>
             )}
           </>
@@ -992,10 +978,8 @@ function ShoppingListTab({ navigation }) {
 }
 
 function RecipeDetailScreen({ route, navigation }) {
-  const { recipe } = route.params;
+  const { recipe, userIngredients = [] } = route.params;
   const [isFavorited, setIsFavorited] = useState(false);
-  const [checkedIngredients, setCheckedIngredients] = useState({});
-  const categoryConfig = CATEGORY_CONFIG[recipe.category] || CATEGORY_CONFIG.All;
 
   useEffect(() => {
     checkFavorite();
@@ -1006,7 +990,7 @@ function RecipeDetailScreen({ route, navigation }) {
       const saved = await AsyncStorage.getItem(FAVORITES_STORAGE);
       if (saved) {
         const favorites = JSON.parse(saved);
-        setIsFavorited(favorites.some((f) => f.name === recipe.name));
+        setIsFavorited(favorites.some((f) => f.id === recipe.id));
       }
     } catch (e) {
       console.error("Failed to check favorite:", e);
@@ -1018,7 +1002,7 @@ function RecipeDetailScreen({ route, navigation }) {
       const saved = await AsyncStorage.getItem(FAVORITES_STORAGE);
       let favorites = saved ? JSON.parse(saved) : [];
       if (isFavorited) {
-        favorites = favorites.filter((f) => f.name !== recipe.name);
+        favorites = favorites.filter((f) => f.id !== recipe.id);
       } else {
         favorites = [{ ...recipe, savedAt: new Date().toISOString() }, ...favorites];
       }
@@ -1029,14 +1013,10 @@ function RecipeDetailScreen({ route, navigation }) {
     }
   };
 
-  const toggleIngredient = (ing) => {
-    setCheckedIngredients((prev) => ({ ...prev, [ing]: !prev[ing] }));
-  };
-
   const addMissingToShoppingList = async () => {
-    const missing = recipe.additional_ingredients || [];
+    const missing = recipe.missing_ingredients || [];
     if (missing.length === 0) {
-      Alert.alert("All Set!", "You have all the ingredients.");
+      Alert.alert("All Set!", "You have all the ingredients needed.");
       return;
     }
 
@@ -1060,98 +1040,139 @@ function RecipeDetailScreen({ route, navigation }) {
     }
   };
 
+  const openSource = () => {
+    const url = recipe.source || recipe.youtube;
+    if (url) {
+      Linking.openURL(url);
+    } else {
+      Alert.alert("No Source", "No external source available for this recipe.");
+    }
+  };
+
+  const openYoutube = () => {
+    if (recipe.youtube) {
+      Linking.openURL(recipe.youtube);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="light" />
       
       <View style={styles.recipeDetailHeader}>
-        <View style={[styles.recipeHeroPlaceholder, { backgroundColor: `${categoryConfig.color}30` }]}>
-          <Text style={styles.recipeHeroEmoji}>{categoryConfig.emoji}</Text>
-        </View>
+        {recipe.image ? (
+          <Image source={{ uri: recipe.image }} style={styles.recipeHeroImage} />
+        ) : (
+          <View style={[styles.recipeHeroPlaceholder, { backgroundColor: COLORS.primaryLight }]}>
+            <Ionicons name="restaurant-outline" size={60} color="#fff" />
+          </View>
+        )}
+        
+        <LinearGradient
+          colors={['transparent', 'rgba(0,0,0,0.7)']}
+          style={styles.heroGradient}
+        />
         
         <View style={styles.recipeDetailNav}>
           <TouchableOpacity style={styles.navBtn} onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color="#fff" />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.navBtn} onPress={toggleFavorite}>
-            <Ionicons name={isFavorited ? "heart" : "heart-outline"} size={24} color={isFavorited ? COLORS.error : "#fff"} />
-          </TouchableOpacity>
+          <View style={styles.navRight}>
+            {recipe.youtube && (
+              <TouchableOpacity style={[styles.navBtn, { marginRight: 10 }]} onPress={openYoutube}>
+                <Ionicons name="logo-youtube" size={24} color="#FF0000" />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity style={styles.navBtn} onPress={toggleFavorite}>
+              <Ionicons name={isFavorited ? "heart" : "heart-outline"} size={24} color={isFavorited ? COLORS.error : "#fff"} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={styles.recipeDetailTitleContainer}>
-          <View style={[styles.categoryPillLarge, { backgroundColor: categoryConfig.color }]}>
-            <Ionicons name={categoryConfig.icon} size={16} color="#fff" />
-            <Text style={styles.categoryPillTextLarge}>{recipe.category}</Text>
+          <View style={styles.recipeBadges}>
+            {recipe.category && (
+              <View style={[styles.categoryPillLarge, { backgroundColor: COLORS.primary }]}>
+                <Text style={styles.categoryPillTextLarge}>{recipe.category}</Text>
+              </View>
+            )}
+            {recipe.area && (
+              <View style={[styles.categoryPillLarge, { backgroundColor: COLORS.accent }]}>
+                <Ionicons name="globe-outline" size={14} color="#fff" />
+                <Text style={styles.categoryPillTextLarge}>{recipe.area}</Text>
+              </View>
+            )}
           </View>
           <Text style={styles.recipeDetailTitle}>{recipe.name}</Text>
-          <View style={styles.recipeDetailMeta}>
-            {recipe.time && (
-              <View style={styles.metaItemLarge}>
-                <Ionicons name="time-outline" size={18} color={COLORS.textSecondary} />
-                <Text style={styles.metaTextLarge}>{recipe.time}</Text>
+          {recipe.match_percent !== undefined && (
+            <View style={styles.matchInfo}>
+              <View style={[styles.matchBadgeLarge, { backgroundColor: recipe.match_percent >= 60 ? COLORS.success : recipe.match_percent >= 40 ? COLORS.warning : COLORS.textSecondary }]}>
+                <Text style={styles.matchBadgeLargeText}>{recipe.match_percent}% ingredient match</Text>
               </View>
-            )}
-            {recipe.difficulty && (
-              <View style={styles.metaItemLarge}>
-                <Ionicons name="speedometer-outline" size={18} color={COLORS.textSecondary} />
-                <Text style={styles.metaTextLarge}>{recipe.difficulty}</Text>
-              </View>
-            )}
-          </View>
+              {recipe.missing_count > 0 && (
+                <Text style={styles.missingText}>Missing {recipe.missing_count} ingredients</Text>
+              )}
+            </View>
+          )}
         </View>
       </View>
 
       <ScrollView style={styles.recipeDetailScroll}>
-        {recipe.description && (
+        {recipe.matched_ingredients && recipe.matched_ingredients.length > 0 && (
           <View style={styles.recipeSection}>
-            <Text style={styles.recipeDescription}>{recipe.description}</Text>
+            <View style={styles.recipeSectionHeader}>
+              <Ionicons name="checkmark-circle" size={22} color={COLORS.success} />
+              <Text style={styles.recipeSectionTitle}>You Have ({recipe.matched_count})</Text>
+            </View>
+            <View style={styles.ingredientTags}>
+              {recipe.matched_ingredients.map((ing, i) => (
+                <View key={i} style={[styles.ingredientTag, { backgroundColor: COLORS.success + '20', borderColor: COLORS.success }]}>
+                  <Text style={[styles.ingredientTagText, { color: COLORS.success }]}>{ing}</Text>
+                </View>
+              ))}
+            </View>
           </View>
         )}
 
-        <View style={styles.recipeSection}>
-          <View style={styles.recipeSectionHeader}>
-            <Ionicons name="checkmark-circle" size={22} color={COLORS.success} />
-            <Text style={styles.recipeSectionTitle}>Available Ingredients</Text>
-          </View>
-          {recipe.ingredients_from_image?.map((ing, i) => (
-            <TouchableOpacity
-              key={i}
-              style={styles.ingredientRow}
-              onPress={() => toggleIngredient(ing)}
-            >
-              <View style={[styles.ingredientCheckbox, checkedIngredients[ing] && styles.ingredientCheckboxChecked]}>
-                {checkedIngredients[ing] && <Ionicons name="checkmark" size={14} color="#fff" />}
-              </View>
-              <Text style={[styles.ingredientRowText, checkedIngredients[ing] && styles.ingredientRowTextChecked]}>
-                {ing}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {recipe.additional_ingredients?.length > 0 && (
+        {recipe.missing_ingredients && recipe.missing_ingredients.length > 0 && (
           <View style={styles.recipeSection}>
             <View style={styles.recipeSectionHeader}>
               <Ionicons name="cart-outline" size={22} color={COLORS.warning} />
-              <Text style={styles.recipeSectionTitle}>Missing Ingredients</Text>
+              <Text style={styles.recipeSectionTitle}>You Need ({recipe.missing_count})</Text>
             </View>
-            {recipe.additional_ingredients.map((ing, i) => (
-              <View key={i} style={styles.missingIngredientRow}>
-                <Ionicons name="add-circle-outline" size={18} color={COLORS.warning} />
-                <Text style={styles.missingIngredientText}>{ing}</Text>
-              </View>
-            ))}
+            <View style={styles.ingredientTags}>
+              {recipe.missing_ingredients.map((ing, i) => (
+                <View key={i} style={[styles.ingredientTag, { backgroundColor: COLORS.warning + '20', borderColor: COLORS.warning }]}>
+                  <Text style={[styles.ingredientTagText, { color: COLORS.warning }]}>{ing}</Text>
+                </View>
+              ))}
+            </View>
             <TouchableOpacity style={styles.addToListBtn} onPress={addMissingToShoppingList}>
               <Ionicons name="cart" size={20} color="#fff" />
-              <Text style={styles.addToListBtnText}>Add to Shopping List</Text>
+              <Text style={styles.addToListBtnText}>Add Missing to Shopping List</Text>
             </TouchableOpacity>
           </View>
         )}
 
-        {recipe.steps?.length > 0 && (
+        {recipe.ingredients && recipe.ingredients.length > 0 && (
           <View style={styles.recipeSection}>
             <View style={styles.recipeSectionHeader}>
               <Ionicons name="list" size={22} color={COLORS.primary} />
+              <Text style={styles.recipeSectionTitle}>All Ingredients</Text>
+            </View>
+            {recipe.ingredients.map((ing, i) => (
+              <View key={i} style={styles.fullIngredientRow}>
+                <Text style={styles.ingredientMeasure}>{ing.measure}</Text>
+                <Text style={styles.ingredientName}>{ing.name}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {recipe.steps && recipe.steps.length > 0 && (
+          <View style={styles.recipeSection}>
+            <View style={styles.recipeSectionHeader}>
+              <Ionicons name="reader-outline" size={22} color={COLORS.primary} />
               <Text style={styles.recipeSectionTitle}>Instructions</Text>
             </View>
             {recipe.steps.map((step, i) => (
@@ -1165,12 +1186,21 @@ function RecipeDetailScreen({ route, navigation }) {
           </View>
         )}
 
-        <TouchableOpacity style={styles.saveRecipeBtn} onPress={toggleFavorite}>
-          <Ionicons name={isFavorited ? "heart" : "heart-outline"} size={22} color="#fff" />
-          <Text style={styles.saveRecipeBtnText}>
-            {isFavorited ? "Remove from Favorites" : "Save to Favorites"}
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.actionButtons}>
+          <TouchableOpacity style={styles.saveRecipeBtn} onPress={toggleFavorite}>
+            <Ionicons name={isFavorited ? "heart" : "heart-outline"} size={22} color="#fff" />
+            <Text style={styles.saveRecipeBtnText}>
+              {isFavorited ? "Saved" : "Save Recipe"}
+            </Text>
+          </TouchableOpacity>
+          
+          {(recipe.source || recipe.youtube) && (
+            <TouchableOpacity style={styles.sourceBtn} onPress={openSource}>
+              <Ionicons name="open-outline" size={22} color={COLORS.primary} />
+              <Text style={styles.sourceBtnText}>View Source</Text>
+            </TouchableOpacity>
+          )}
+        </View>
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -1187,7 +1217,7 @@ function TabNavigator() {
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: COLORS.textLight,
         tabBarLabelStyle: styles.tabBarLabel,
-        tabBarIcon: ({ focused, color, size }) => {
+        tabBarIcon: ({ focused, color }) => {
           let iconName;
           if (route.name === "HomeTab") iconName = focused ? "home" : "home-outline";
           else if (route.name === "IngredientsTab") iconName = focused ? "nutrition" : "nutrition-outline";
@@ -1324,9 +1354,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: COLORS.text,
   },
-  categoryEmoji: {
-    fontSize: 20,
-  },
   seeAllText: {
     fontSize: 14,
     fontWeight: "600",
@@ -1399,10 +1426,23 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: COLORS.primary,
   },
+  refreshRecipesBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    marginTop: 12,
+    paddingVertical: 8,
+  },
+  refreshRecipesText: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: COLORS.primary,
+  },
 
   // Recipe Cards
   recipeCard: {
-    width: SCREEN_WIDTH * 0.42,
+    width: SCREEN_WIDTH * 0.44,
     backgroundColor: COLORS.card,
     borderRadius: 20,
     marginRight: 14,
@@ -1414,22 +1454,25 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   recipeCardCompact: {
-    width: SCREEN_WIDTH * 0.42,
+    width: SCREEN_WIDTH * 0.44,
   },
   recipeImageContainer: {
-    height: 120,
+    height: 130,
     position: "relative",
   },
   recipeImageContainerCompact: {
-    height: 100,
+    height: 120,
+  },
+  recipeImage: {
+    width: "100%",
+    height: "100%",
+    resizeMode: "cover",
   },
   recipeImagePlaceholder: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-  },
-  recipeEmoji: {
-    fontSize: 40,
+    backgroundColor: COLORS.border,
   },
   favoriteButton: {
     position: "absolute",
@@ -1442,7 +1485,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  categoryPill: {
+  matchBadge: {
     position: "absolute",
     bottom: 10,
     left: 10,
@@ -1450,9 +1493,9 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 12,
   },
-  categoryPillText: {
+  matchBadgeText: {
     fontSize: 11,
-    fontWeight: "600",
+    fontWeight: "700",
     color: "#fff",
   },
   recipeCardContent: {
@@ -1467,7 +1510,8 @@ const styles = StyleSheet.create({
   },
   recipeCardMeta: {
     flexDirection: "row",
-    gap: 12,
+    flexWrap: "wrap",
+    gap: 8,
   },
   metaItem: {
     flexDirection: "row",
@@ -1477,6 +1521,17 @@ const styles = StyleSheet.create({
   metaText: {
     fontSize: 12,
     color: COLORS.textSecondary,
+  },
+  missingBadge: {
+    backgroundColor: COLORS.warning + "15",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  recipeArea: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginTop: 4,
   },
 
   // Empty State
@@ -1641,31 +1696,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "600",
     color: COLORS.error,
-  },
-  filterScroll: {
-    paddingHorizontal: 20,
-    paddingBottom: 12,
-  },
-  filterChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    backgroundColor: COLORS.card,
-    marginRight: 10,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  filterChipActive: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
-  },
-  filterChipText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: COLORS.textSecondary,
-  },
-  filterChipTextActive: {
-    color: "#fff",
   },
   favoritesGrid: {
     flexDirection: "row",
@@ -1851,14 +1881,24 @@ const styles = StyleSheet.create({
   // Recipe Detail
   recipeDetailHeader: {
     position: "relative",
+    height: 300,
+  },
+  recipeHeroImage: {
+    width: "100%",
+    height: "100%",
+    resizeMode: "cover",
   },
   recipeHeroPlaceholder: {
-    height: 260,
+    flex: 1,
     justifyContent: "center",
     alignItems: "center",
   },
-  recipeHeroEmoji: {
-    fontSize: 80,
+  heroGradient: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 150,
   },
   recipeDetailNav: {
     position: "absolute",
@@ -1868,6 +1908,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     paddingHorizontal: 20,
+  },
+  navRight: {
+    flexDirection: "row",
   },
   navBtn: {
     width: 44,
@@ -1882,21 +1925,20 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: COLORS.background,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    paddingTop: 20,
+    padding: 20,
+  },
+  recipeBadges: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 10,
   },
   categoryPillLarge: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    alignSelf: "flex-start",
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
-    marginBottom: 12,
   },
   categoryPillTextLarge: {
     fontSize: 13,
@@ -1906,84 +1948,78 @@ const styles = StyleSheet.create({
   recipeDetailTitle: {
     fontSize: 24,
     fontWeight: "700",
-    color: COLORS.text,
-    marginBottom: 12,
-    lineHeight: 30,
+    color: "#fff",
+    textShadowColor: "rgba(0,0,0,0.5)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
-  recipeDetailMeta: {
-    flexDirection: "row",
-    gap: 20,
+  matchInfo: {
+    marginTop: 10,
   },
-  metaItemLarge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
+  matchBadgeLarge: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    marginBottom: 6,
   },
-  metaTextLarge: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    fontWeight: "500",
+  matchBadgeLargeText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#fff",
+  },
+  missingText: {
+    fontSize: 13,
+    color: "rgba(255,255,255,0.8)",
   },
   recipeDetailScroll: {
     flex: 1,
     backgroundColor: COLORS.background,
   },
   recipeSection: {
-    paddingHorizontal: 24,
+    paddingHorizontal: 20,
     paddingVertical: 16,
   },
   recipeSectionHeader: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    marginBottom: 16,
+    marginBottom: 14,
   },
   recipeSectionTitle: {
     fontSize: 18,
     fontWeight: "700",
     color: COLORS.text,
   },
-  recipeDescription: {
-    fontSize: 15,
-    color: COLORS.textSecondary,
-    lineHeight: 24,
-  },
-  ingredientRow: {
+  ingredientTags: {
     flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 12,
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  ingredientTag: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  ingredientTagText: {
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  fullIngredientRow: {
+    flexDirection: "row",
+    paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
-  ingredientCheckbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: COLORS.border,
-    marginRight: 14,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  ingredientCheckboxChecked: {
-    backgroundColor: COLORS.success,
-    borderColor: COLORS.success,
-  },
-  ingredientRowText: {
-    fontSize: 15,
-    color: COLORS.text,
-  },
-  ingredientRowTextChecked: {
-    textDecorationLine: "line-through",
+  ingredientMeasure: {
+    width: 100,
+    fontSize: 14,
+    fontWeight: "600",
     color: COLORS.textSecondary,
   },
-  missingIngredientRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingVertical: 10,
-  },
-  missingIngredientText: {
+  ingredientName: {
+    flex: 1,
     fontSize: 15,
     color: COLORS.text,
   },
@@ -2014,6 +2050,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginRight: 14,
+    marginTop: 2,
   },
   stepNumberText: {
     fontSize: 14,
@@ -2024,7 +2061,12 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     color: COLORS.text,
-    lineHeight: 22,
+    lineHeight: 24,
+  },
+  actionButtons: {
+    paddingHorizontal: 20,
+    gap: 12,
+    marginTop: 8,
   },
   saveRecipeBtn: {
     flexDirection: "row",
@@ -2032,15 +2074,29 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 10,
     backgroundColor: COLORS.primary,
-    marginHorizontal: 24,
     paddingVertical: 16,
     borderRadius: 16,
-    marginTop: 8,
   },
   saveRecipeBtnText: {
     fontSize: 16,
     fontWeight: "600",
     color: "#fff",
+  },
+  sourceBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    backgroundColor: COLORS.card,
+    paddingVertical: 16,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: COLORS.primary,
+  },
+  sourceBtnText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: COLORS.primary,
   },
 
   // Tab Bar
