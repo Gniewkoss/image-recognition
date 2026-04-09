@@ -311,20 +311,33 @@ function HomeTab({ navigation }) {
     ).start();
 
     try {
+      console.log("Starting analysis...");
+      console.log("API Key present:", !!apiKey);
+      console.log("Image base64 length:", base64?.length);
+      
       const response = await fetch(`${SERVER_URL}/analyze`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "ngrok-skip-browser-warning": "true",
         },
-        body: JSON.stringify({ image: base64, api_key: apiKey }),
+        body: JSON.stringify({ image_base64: base64, api_key: apiKey }),
       });
 
-      if (!response.ok) throw new Error("Analysis failed");
+      console.log("Response status:", response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Server error:", errorText);
+        throw new Error(errorText || "Analysis failed");
+      }
 
       const data = await response.json();
-      const newIngredients = data.products || [];
-      const newRecipes = data.recipes || [];
+      console.log("Analysis result:", JSON.stringify(data).substring(0, 500));
+      
+      const result = data.result || data;
+      const newIngredients = result.products || [];
+      const newRecipes = result.recipes || [];
 
       setIngredients(newIngredients);
       setRecipes(newRecipes);
@@ -347,7 +360,8 @@ function HomeTab({ navigation }) {
 
     } catch (e) {
       console.error("Analysis error:", e);
-      Alert.alert("Error", "Failed to analyze image. Please try again.");
+      const errorMessage = e.message || "Unknown error";
+      Alert.alert("Analysis Failed", errorMessage.includes("API") ? errorMessage : "Could not connect to the server. Please check your connection and try again.");
     } finally {
       setScanning(false);
       scanAnim.stopAnimation();

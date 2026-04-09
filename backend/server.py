@@ -56,35 +56,38 @@ def analyze_image():
     try:
         client = OpenAI(api_key=api_key)
         
-        response = client.responses.create(
-            model="gpt-4.1-mini",
-            input=[{
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{
                 "role": "user",
                 "content": [
-                    {"type": "input_text", "text": ANALYSIS_PROMPT},
+                    {"type": "text", "text": ANALYSIS_PROMPT},
                     {
-                        "type": "input_image",
-                        "image_url": f"data:image/jpeg;base64,{image_base64}",
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{image_base64}",
+                        },
                     },
                 ],
             }],
+            max_tokens=2000,
         )
         
-        result_text = response.output_text
+        result_text = response.choices[0].message.content
         
         # Get token usage
-        usage = getattr(response, 'usage', None)
+        usage = response.usage
         token_info = {}
         if usage:
             token_info = {
-                'input_tokens': usage.input_tokens,
-                'output_tokens': usage.output_tokens,
-                'total_tokens': usage.input_tokens + usage.output_tokens
+                'input_tokens': usage.prompt_tokens,
+                'output_tokens': usage.completion_tokens,
+                'total_tokens': usage.total_tokens
             }
             print(f"\n=== TOKEN USAGE ===")
-            print(f"Input tokens:  {usage.input_tokens}")
-            print(f"Output tokens: {usage.output_tokens}")
-            print(f"Total tokens:  {usage.input_tokens + usage.output_tokens}")
+            print(f"Input tokens:  {usage.prompt_tokens}")
+            print(f"Output tokens: {usage.completion_tokens}")
+            print(f"Total tokens:  {usage.total_tokens}")
             print(f"==================\n")
         
         json_match = re.search(r'\{[\s\S]*\}', result_text)
@@ -93,11 +96,14 @@ def analyze_image():
         
         try:
             parsed_result = json.loads(result_text)
-            return jsonify({'result': parsed_result, 'raw': response.output_text, 'tokens': token_info})
+            return jsonify({'result': parsed_result, 'raw': response.choices[0].message.content, 'tokens': token_info})
         except json.JSONDecodeError:
-            return jsonify({'result': None, 'raw': response.output_text, 'parse_error': True, 'tokens': token_info})
+            return jsonify({'result': None, 'raw': response.choices[0].message.content, 'parse_error': True, 'tokens': token_info})
     
     except Exception as e:
+        print(f"Error in analyze: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 RECIPES_PROMPT = """Based on the following list of available ingredients, suggest recipes.
@@ -149,28 +155,29 @@ def regenerate_recipes():
         ingredients_list = "\n".join([f"- {p.get('name', '')} ({p.get('quantity', 'some')})" for p in products])
         prompt = RECIPES_PROMPT.format(ingredients=ingredients_list)
         
-        response = client.responses.create(
-            model="gpt-4.1-mini",
-            input=[{
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{
                 "role": "user",
                 "content": prompt
             }],
+            max_tokens=2000,
         )
         
-        result_text = response.output_text
+        result_text = response.choices[0].message.content
         
-        usage = getattr(response, 'usage', None)
+        usage = response.usage
         token_info = {}
         if usage:
             token_info = {
-                'input_tokens': usage.input_tokens,
-                'output_tokens': usage.output_tokens,
-                'total_tokens': usage.input_tokens + usage.output_tokens
+                'input_tokens': usage.prompt_tokens,
+                'output_tokens': usage.completion_tokens,
+                'total_tokens': usage.total_tokens
             }
             print(f"\n=== REGENERATE RECIPES - TOKEN USAGE ===")
-            print(f"Input tokens:  {usage.input_tokens}")
-            print(f"Output tokens: {usage.output_tokens}")
-            print(f"Total tokens:  {usage.input_tokens + usage.output_tokens}")
+            print(f"Input tokens:  {usage.prompt_tokens}")
+            print(f"Output tokens: {usage.completion_tokens}")
+            print(f"Total tokens:  {usage.total_tokens}")
             print(f"========================================\n")
         
         json_match = re.search(r'\{[\s\S]*\}', result_text)
@@ -181,9 +188,12 @@ def regenerate_recipes():
             parsed_result = json.loads(result_text)
             return jsonify({'recipes': parsed_result.get('recipes', []), 'tokens': token_info})
         except json.JSONDecodeError:
-            return jsonify({'error': 'Failed to parse recipes', 'raw': response.output_text})
+            return jsonify({'error': 'Failed to parse recipes', 'raw': response.choices[0].message.content})
     
     except Exception as e:
+        print(f"Error in regenerate_recipes: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 @app.route('/health', methods=['GET'])
