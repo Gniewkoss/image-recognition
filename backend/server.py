@@ -1,13 +1,19 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from openai import OpenAI
+from openai import OpenAI, APIConnectionError, APITimeoutError, AuthenticationError
 import json
 import re
 import requests
 import os
+import httpx
+import certifi
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import quote, urljoin, urlparse
+
+# Outbound TLS (OpenAI, etc.): prefer Mozilla CA bundle — helps some macOS / Python setups.
+os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+os.environ.setdefault("REQUESTS_CA_BUNDLE", certifi.where())
 
 app = Flask(__name__)
 CORS(app)
@@ -536,7 +542,7 @@ def analyze_image():
     """Analyze image and extract ingredients using AI."""
     data = request.json
     
-    api_key = data.get('api_key')
+    api_key = (data.get('api_key') or '').strip()
     image_base64 = data.get('image_base64')
     
     if not api_key:
@@ -545,36 +551,61 @@ def analyze_image():
         return jsonify({'error': 'Image is required'}), 400
     
     try:
-        client = OpenAI(api_key=api_key)
-        
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": INGREDIENT_EXTRACTION_PROMPT},
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}},
-                ],
-            }],
-            max_tokens=1000,
-        )
-        
+        with httpx.Client(verify=certifi.where(), timeout=120.0) as http_client:
+            client = OpenAI(api_key=api_key, http_client=http_client)
+
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": INGREDIENT_EXTRACTION_PROMPT},
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}},
+                    ],
+                }],
+                max_tokens=1000,
+            )
+
         result_text = response.choices[0].message.content
-        
+
         usage = response.usage
         if usage:
             print(f"Tokens used: {usage.total_tokens}")
-        
+
         json_match = re.search(r'\{[\s\S]*\}', result_text)
         if json_match:
             result_text = json_match.group()
-        
+
         try:
             parsed_result = json.loads(result_text)
             return jsonify({'ingredients': parsed_result.get('ingredients', [])})
         except json.JSONDecodeError:
             return jsonify({'ingredients': [], 'error': 'Failed to parse', 'raw': result_text})
-    
+
+    except APITimeoutError:
+        return jsonify({'error': 'OpenAI request timed out. Try again.'}), 504
+    except APIConnectionError as e:
+        cause = e.__cause__ or e.__context__
+        cause_s = str(cause) if cause else ""
+        if "Illegal header value" in cause_s or "Bearer " in cause_s:
+            print("OpenAI connection error: invalid Authorization header (often spaces in API key)")
+            return jsonify({
+                'error': (
+                    "The API key contains spaces or characters that are not allowed in HTTP headers. "
+                    "Open API settings in the app, remove any spaces before/after the key, and save again."
+                )
+            }), 400
+        detail = f" ({cause})" if cause else ""
+        print(f"OpenAI connection error{detail}")
+        return jsonify({
+            'error': (
+                "This server could not reach OpenAI (network or TLS). "
+                "Check internet on the machine running the API, VPN/firewall, and that api.openai.com is allowed."
+                f"{detail}"
+            )
+        }), 502
+    except AuthenticationError as e:
+        return jsonify({'error': f'OpenAI rejected the API key: {e.message}'}), 401
     except Exception as e:
         print(f"Error in analyze: {str(e)}")
         return jsonify({'error': str(e)}), 500
@@ -767,4 +798,5 @@ def health():
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5001, debug=True)
+    port = int(os.environ.get("PORT", "5001"))
+    app.run(host='0.0.0.0', port=port, debug=True)

@@ -3,7 +3,15 @@
   "version": "1.0.0",
   "main": "expo/AppEntry.js",
   "scripts": {
-    "start": "expo start",
+    "backend": "./backend/venv/bin/python backend/server.py",
+    "backend:stop": "sh -c 'for pid in $(lsof -ti tcp:5001 2>/dev/null); do kill -9 $pid 2>/dev/null; done; exit 0'",
+    "kill-metro": "sh -c 'for p in 8081 8082; do for pid in $(lsof -ti tcp:$p 2>/dev/null); do kill -9 $pid 2>/dev/null; done; done; exit 0'",
+    "prestart": "npm run kill-metro",
+    "start": "expo start --clear --port 8081 --lan",
+    "prestart:lan": "npm run kill-metro",
+    "start:lan": "expo start --lan --clear --port 8081",
+    "prestart:tunnel": "npm run kill-metro",
+    "start:tunnel": "expo start --tunnel --clear --port 8081",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web"

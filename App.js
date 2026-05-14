@@ -19,6 +19,7 @@ import {
   Linking,
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
+import Constants from "expo-constants";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
@@ -57,25 +58,25 @@ const RADIUS = {
 // Design System - Shadows
 const SHADOWS = {
   sm: {
-    shadowColor: "#000",
+    shadowColor: "#1A100A",
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
+    shadowOpacity: 0.07,
+    shadowRadius: 5,
     elevation: 2,
   },
   md: {
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
+    shadowColor: "#1A100A",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.09,
+    shadowRadius: 10,
     elevation: 4,
   },
   lg: {
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 6,
+    shadowColor: "#1A100A",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    elevation: 8,
   },
 };
 
@@ -85,30 +86,81 @@ const HISTORY_STORAGE = "@scan_history";
 const INGREDIENTS_STORAGE = "@current_ingredients";
 const RECIPES_STORAGE = "@current_recipes";
 const SHOPPING_LIST_STORAGE = "@shopping_list";
-const SERVER_URL = "https://undecompounded-multicrystalline-natasha.ngrok-free.dev";
+
+const API_PORT = process.env.EXPO_PUBLIC_SERVER_PORT?.trim() || "5001";
+
+/** Metro / Expo dev host (your machine on LAN); used so a physical device can reach Flask without ngrok. */
+function getExpoDevHostname() {
+  const uri =
+    Constants.expoConfig?.hostUri ??
+    Constants.manifest?.debuggerHost ??
+    Constants.manifest2?.extra?.expoGo?.debuggerHost;
+  if (!uri || typeof uri !== "string") return null;
+  return uri.split(":")[0] || null;
+}
+
+function inferBackendBaseUrl() {
+  const fromEnv = process.env.EXPO_PUBLIC_SERVER_URL?.trim();
+  if (fromEnv) return fromEnv.replace(/\/$/, "");
+
+  const host = getExpoDevHostname();
+  if (host && host !== "localhost") {
+    return `http://${host}:${API_PORT}`;
+  }
+  if (Platform.OS === "android") {
+    return `http://10.0.2.2:${API_PORT}`;
+  }
+  return `http://127.0.0.1:${API_PORT}`;
+}
+
+const SERVER_URL = inferBackendBaseUrl();
+
+function humanizeApiError(body, httpStatus) {
+  if (!body || typeof body !== "string") {
+    return httpStatus ? `Request failed (HTTP ${httpStatus}).` : "Request failed.";
+  }
+  const t = body.trim();
+  if (t.startsWith("<!DOCTYPE") || t.startsWith("<html")) {
+    if (/ERR_NGROK_3200|endpoint .+ is offline/i.test(t)) {
+      return `Backend URL is offline or expired. Start Flask on port ${API_PORT} and keep Expo on LAN (npm run start), or set EXPO_PUBLIC_SERVER_URL to http://YOUR_LAN_IP:${API_PORT} or a fresh ngrok URL.`;
+    }
+    if (/ngrok/i.test(t)) {
+      return "Tunnel or gateway returned an error page. Update EXPO_PUBLIC_SERVER_URL or run the backend and use LAN mode.";
+    }
+    return `Server sent HTML instead of JSON (HTTP ${httpStatus ?? "?"}). Check that the backend is running and SERVER_URL points to it.`;
+  }
+  try {
+    const j = JSON.parse(t);
+    if (j.error) return String(j.error);
+    if (j.message) return String(j.message);
+  } catch (_) {
+    /* plain text */
+  }
+  return t.length > 400 ? `${t.slice(0, 400)}…` : t;
+}
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
 const COLORS = {
-  primary: "#2E7D32",
-  primaryLight: "#66BB6A",
-  primaryDark: "#1B5E20",
-  secondary: "#FAFAFA",
-  background: "#F8F9FA",
+  primary: "#1A3828",
+  primaryLight: "#3D7A5C",
+  primaryDark: "#0F2318",
+  secondary: "#F7F6F2",
+  background: "#F7F6F2",
   card: "#FFFFFF",
-  accent: "#FF8A65",
-  accentLight: "#FFAB91",
-  text: "#1A1A2E",
-  textSecondary: "#6B7280",
-  textLight: "#9CA3AF",
-  border: "#E5E7EB",
-  success: "#10B981",
-  warning: "#F59E0B",
-  error: "#EF4444",
-  gradient: ["#2E7D32", "#4CAF50", "#66BB6A"],
-  gradientSoft: ["#E8F5E9", "#C8E6C9"],
-  glass: "rgba(255, 255, 255, 0.9)",
+  accent: "#D97A3A",
+  accentLight: "#FBE8D4",
+  text: "#141210",
+  textSecondary: "#726E69",
+  textLight: "#B0AAA5",
+  border: "#E5E0D9",
+  success: "#2E6B44",
+  warning: "#C07D1A",
+  error: "#C13333",
+  gradient: ["#1A3828", "#243D32", "#2D5A3D"],
+  gradientSoft: ["#EAF2EC", "#D4E8DB"],
+  glass: "rgba(247, 246, 242, 0.97)",
 };
 
 const SkeletonLoader = ({ width, height, style }) => {
@@ -151,7 +203,7 @@ const EmptyState = ({ icon, title, subtitle, actionText, onAction }) => {
   return (
     <View style={styles.emptyState}>
       <View style={styles.emptyStateIcon}>
-        <Ionicons name={icon} size={42} color={COLORS.primary} />
+        <Ionicons name={icon} size={38} color={COLORS.accent} />
       </View>
       <Text style={styles.emptyStateTitle}>{title}</Text>
       <Text style={styles.emptyStateSubtitle}>{subtitle}</Text>
@@ -451,7 +503,7 @@ function HomeTab({ navigation }) {
         AsyncStorage.getItem(RECIPES_STORAGE),
         AsyncStorage.getItem(FAVORITES_STORAGE),
       ]);
-      if (savedKey) setApiKey(savedKey);
+      if (savedKey) setApiKey(savedKey.trim());
       if (savedIngredients) setIngredients(JSON.parse(savedIngredients));
       if (savedRecipes) {
         const parsed = JSON.parse(savedRecipes);
@@ -466,8 +518,13 @@ function HomeTab({ navigation }) {
 
   const saveApiKey = async () => {
     try {
-      await AsyncStorage.setItem(API_KEY_STORAGE, tempApiKey);
-      setApiKey(tempApiKey);
+      const key = tempApiKey.trim();
+      if (!key) {
+        Alert.alert("Error", "Enter a valid API key.");
+        return;
+      }
+      await AsyncStorage.setItem(API_KEY_STORAGE, key);
+      setApiKey(key);
       setShowApiModal(false);
       Alert.alert("Success", "API key saved!");
     } catch (e) {
@@ -522,15 +579,20 @@ function HomeTab({ navigation }) {
           "Content-Type": "application/json",
           "ngrok-skip-browser-warning": "true",
         },
-        body: JSON.stringify({ image_base64: base64, api_key: apiKey }),
+        body: JSON.stringify({ image_base64: base64, api_key: apiKey.trim() }),
       });
 
+      const responseText = await response.text();
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || "Analysis failed");
+        throw new Error(humanizeApiError(responseText, response.status));
       }
 
-      const data = await response.json();
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        throw new Error(humanizeApiError(responseText, response.status));
+      }
       const newIngredients = data.ingredients || [];
       
       console.log("Found ingredients:", newIngredients.length);
@@ -575,12 +637,17 @@ function HomeTab({ navigation }) {
         body: JSON.stringify({ ingredients: ingredientsList }),
       });
 
+      const responseText = await response.text();
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || "Recipe search failed");
+        throw new Error(humanizeApiError(responseText, response.status));
       }
 
-      const data = await response.json();
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        throw new Error(humanizeApiError(responseText, response.status));
+      }
       console.log("Found recipes:", data.total);
       
       setRecipes(data.recipes || []);
@@ -593,7 +660,7 @@ function HomeTab({ navigation }) {
 
     } catch (e) {
       console.error("Recipe search error:", e);
-      Alert.alert("Search Failed", "Could not find recipes. Please try again.");
+      Alert.alert("Search Failed", e.message || "Could not find recipes. Please try again.");
     } finally {
       setSearchingRecipes(false);
     }
@@ -703,7 +770,7 @@ function HomeTab({ navigation }) {
             activeOpacity={0.95}
           >
             <LinearGradient
-              colors={scanning || searchingRecipes ? ["#9CA3AF", "#D1D5DB"] : COLORS.gradient}
+              colors={scanning || searchingRecipes ? ["#B5B0AA", "#C8C2BC"] : COLORS.gradient}
               style={styles.scanGradient}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
@@ -711,25 +778,25 @@ function HomeTab({ navigation }) {
               <View style={styles.scanContent}>
                 {scanning || searchingRecipes ? (
                   <>
-                    <ActivityIndicator color="#fff" size="large" />
+                    <ActivityIndicator color="rgba(255,255,255,0.9)" size="large" />
                     <Text style={styles.scanTitle}>
-                      {scanning ? "Analyzing..." : "Finding recipes..."}
+                      {scanning ? "Analyzing image..." : "Finding recipes..."}
                     </Text>
                     <Text style={styles.scanSubtitle}>This may take a moment</Text>
                   </>
                 ) : (
                   <>
                     <View style={styles.scanIconWrapper}>
-                      <View style={styles.scanIconRing}>
-                        <Ionicons name="scan" size={32} color="#fff" />
-                      </View>
+                      <Ionicons name="camera-outline" size={38} color="rgba(255,255,255,0.95)" />
                     </View>
                     <Text style={styles.scanTitle}>Scan Your Fridge</Text>
                     <Text style={styles.scanSubtitle}>AI detects ingredients instantly</Text>
+                    <View style={styles.scanCTAPill}>
+                      <Text style={styles.scanCTAPillText}>Tap to open camera</Text>
+                    </View>
                   </>
                 )}
               </View>
-              <View style={styles.scanDecoration} />
             </LinearGradient>
           </TouchableOpacity>
         </Animated.View>
@@ -1147,7 +1214,7 @@ function IngredientsTab({ navigation }) {
         )}
 
         <TouchableOpacity style={styles.rescanButton} onPress={() => navigation.navigate("HomeTab")}>
-          <Ionicons name="scan-outline" size={20} color={COLORS.primary} />
+          <Ionicons name="scan-outline" size={20} color={COLORS.textSecondary} />
           <Text style={styles.rescanButtonText}>Scan Fridge Again</Text>
         </TouchableOpacity>
 
@@ -1685,7 +1752,7 @@ function TabNavigator() {
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarStyle: styles.tabBar,
-        tabBarActiveTintColor: COLORS.primary,
+        tabBarActiveTintColor: COLORS.primaryLight,
         tabBarInactiveTintColor: COLORS.textLight,
         tabBarLabelStyle: styles.tabBarLabel,
         tabBarIcon: ({ focused, color }) => {
@@ -1749,17 +1816,17 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   greeting: {
-    fontSize: 14,
+    fontSize: 13,
     color: COLORS.textSecondary,
-    fontWeight: "500",
-    letterSpacing: 0.2,
+    fontWeight: "400",
+    letterSpacing: 0.1,
   },
   headerTitle: {
-    fontSize: 28,
+    fontSize: 30,
     fontWeight: "800",
     color: COLORS.text,
     marginTop: 2,
-    letterSpacing: -0.8,
+    letterSpacing: -1.0,
   },
   avatarBtn: {
     width: 44,
@@ -1787,15 +1854,15 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.xxl,
     overflow: "hidden",
     shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 10,
   },
   scanGradient: {
-    paddingVertical: SPACING.xxl,
+    paddingVertical: SPACING.xxl + 8,
     paddingHorizontal: SPACING.xl,
-    minHeight: 150,
+    minHeight: 185,
     position: "relative",
   },
   scanContent: {
@@ -1804,38 +1871,40 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   scanIconWrapper: {
-    marginBottom: 16,
-  },
-  scanIconRing: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: "rgba(255,255,255,0.2)",
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "rgba(255,255,255,0.12)",
     justifyContent: "center",
     alignItems: "center",
-    borderWidth: 2,
-    borderColor: "rgba(255,255,255,0.3)",
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.2)",
+    marginBottom: SPACING.lg,
   },
   scanTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: "700",
     color: "#fff",
-    letterSpacing: -0.3,
+    letterSpacing: -0.5,
   },
   scanSubtitle: {
     fontSize: 14,
-    color: "rgba(255,255,255,0.85)",
+    color: "rgba(255,255,255,0.75)",
     marginTop: 6,
-    fontWeight: "500",
+    fontWeight: "400",
   },
-  scanDecoration: {
-    position: "absolute",
-    top: -50,
-    right: -50,
-    width: 150,
-    height: 150,
-    borderRadius: 75,
-    backgroundColor: "rgba(255,255,255,0.08)",
+  scanCTAPill: {
+    marginTop: SPACING.lg,
+    backgroundColor: COLORS.accent,
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.sm + 2,
+    borderRadius: RADIUS.full,
+  },
+  scanCTAPillText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#fff",
+    letterSpacing: 0.2,
   },
   scanningContent: {
     alignItems: "center",
@@ -1935,10 +2004,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   sectionTitle: {
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: "700",
     color: COLORS.text,
-    letterSpacing: -0.3,
+    letterSpacing: -0.4,
   },
   viewAllBtn: {
     flexDirection: "row",
@@ -1979,7 +2048,8 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.md,
     marginRight: SPACING.sm,
-    ...SHADOWS.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   ingredientChipIcon: {
     width: 36,
@@ -2110,10 +2180,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   recipeSectionTitle: {
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: "700",
     color: COLORS.text,
-    letterSpacing: -0.3,
+    letterSpacing: -0.4,
   },
   recipeSectionBadge: {
     paddingHorizontal: SPACING.sm + 2,
@@ -2177,11 +2247,11 @@ const styles = StyleSheet.create({
     marginRight: 0,
   },
   recipeImageContainer: {
-    height: 130,
+    height: 148,
     position: "relative",
   },
   recipeImageContainerCompact: {
-    height: 115,
+    height: 132,
   },
   recipeImage: {
     width: "100%",
@@ -2224,10 +2294,10 @@ const styles = StyleSheet.create({
     left: 10,
     paddingHorizontal: 10,
     paddingVertical: 5,
-    borderRadius: 10,
-    shadowColor: "#000",
+    borderRadius: RADIUS.full,
+    shadowColor: "#1A100A",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.2,
     shadowRadius: 4,
     elevation: 3,
   },
@@ -2242,7 +2312,7 @@ const styles = StyleSheet.create({
     paddingTop: 12,
   },
   recipeCardTitle: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "700",
     color: COLORS.text,
     marginBottom: 10,
@@ -2298,38 +2368,40 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.xl,
   },
   emptyStateIcon: {
-    width: 80,
-    height: 80,
+    width: 84,
+    height: 84,
     borderRadius: RADIUS.xl,
-    backgroundColor: COLORS.primary + '10',
+    backgroundColor: COLORS.accentLight,
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: SPACING.lg,
+    marginBottom: SPACING.xl,
   },
   emptyStateTitle: {
-    fontSize: 18,
+    fontSize: 19,
     fontWeight: "700",
     color: COLORS.text,
     marginBottom: SPACING.sm,
+    letterSpacing: -0.3,
   },
   emptyStateSubtitle: {
     fontSize: 14,
     color: COLORS.textSecondary,
     textAlign: "center",
-    lineHeight: 21,
+    lineHeight: 22,
   },
   emptyStateButton: {
     marginTop: SPACING.xl,
     backgroundColor: COLORS.primary,
-    paddingHorizontal: SPACING.xl,
-    paddingVertical: SPACING.md,
-    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.xl + 8,
+    paddingVertical: SPACING.md + 2,
+    borderRadius: RADIUS.full,
     ...SHADOWS.md,
   },
   emptyStateButtonText: {
     fontSize: 15,
     fontWeight: "600",
     color: "#fff",
+    letterSpacing: 0.1,
   },
 
   // Skeleton
@@ -2363,10 +2435,10 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   pageHeaderTitle: {
-    fontSize: 26,
+    fontSize: 28,
     fontWeight: "800",
     color: COLORS.text,
-    letterSpacing: -0.5,
+    letterSpacing: -0.8,
     marginTop: 2,
   },
   pageHeaderBadge: {
@@ -2450,9 +2522,9 @@ const styles = StyleSheet.create({
     ...SHADOWS.sm,
   },
   ingredientCardIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: RADIUS.md,
+    width: 56,
+    height: 56,
+    borderRadius: RADIUS.lg,
     justifyContent: "center",
     alignItems: "center",
     marginBottom: SPACING.md,
@@ -2500,16 +2572,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
     marginTop: 24,
-    paddingVertical: 14,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: COLORS.primary,
-    borderStyle: "dashed",
+    paddingVertical: 16,
+    borderRadius: RADIUS.md,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
   },
   rescanButtonText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "600",
-    color: COLORS.primary,
+    color: COLORS.textSecondary,
   },
 
   // Favorites
@@ -2546,22 +2617,19 @@ const styles = StyleSheet.create({
   },
   addItemInput: {
     flex: 1,
-    height: 48,
+    height: 52,
     backgroundColor: COLORS.card,
     borderRadius: RADIUS.md,
     paddingHorizontal: 16,
     fontSize: 16,
     color: COLORS.text,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
   },
   addItemBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
+    width: 52,
+    height: 52,
+    borderRadius: RADIUS.md,
     backgroundColor: COLORS.primary,
     justifyContent: "center",
     alignItems: "center",
@@ -2573,16 +2641,19 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.md,
     padding: SPACING.lg,
     marginBottom: SPACING.sm,
-    ...SHADOWS.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   shoppingItemChecked: {
-    backgroundColor: COLORS.success + "08",
+    backgroundColor: COLORS.card,
+    borderColor: COLORS.success + "35",
+    opacity: 0.75,
   },
   checkbox: {
     width: 24,
     height: 24,
-    borderRadius: RADIUS.sm,
-    borderWidth: 2,
+    borderRadius: 12,
+    borderWidth: 1.5,
     borderColor: COLORS.border,
     marginRight: 14,
     justifyContent: "center",
@@ -2659,22 +2730,26 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   apiInput: {
-    height: 48,
+    height: 52,
     backgroundColor: COLORS.background,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.lg,
     fontSize: 15,
     color: COLORS.text,
     marginBottom: SPACING.lg,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
   },
   modalInput: {
-    height: 48,
+    height: 52,
     backgroundColor: COLORS.background,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.lg,
     fontSize: 15,
     color: COLORS.text,
     marginBottom: 12,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
   },
   modalButtons: {
     flexDirection: "row",
@@ -2683,11 +2758,13 @@ const styles = StyleSheet.create({
   },
   modalCancelBtn: {
     flex: 1,
-    height: 48,
-    borderRadius: 12,
+    height: 52,
+    borderRadius: RADIUS.md,
     backgroundColor: COLORS.background,
     justifyContent: "center",
     alignItems: "center",
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
   },
   modalCancelText: {
     fontSize: 15,
@@ -2696,7 +2773,7 @@ const styles = StyleSheet.create({
   },
   modalSaveBtn: {
     flex: 1,
-    height: 48,
+    height: 52,
     borderRadius: RADIUS.md,
     backgroundColor: COLORS.primary,
     justifyContent: "center",
@@ -2717,7 +2794,7 @@ const styles = StyleSheet.create({
   // Recipe Detail
   recipeDetailHeader: {
     position: "relative",
-    height: 300,
+    height: 320,
   },
   recipeHeroImage: {
     width: "100%",
@@ -2831,9 +2908,10 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
   },
   recipeDetailSectionTitle: {
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: "700",
     color: COLORS.text,
+    letterSpacing: -0.3,
   },
   ingredientTags: {
     flexDirection: "row",
@@ -2872,9 +2950,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 10,
-    backgroundColor: COLORS.warning,
-    paddingVertical: 14,
-    borderRadius: 12,
+    backgroundColor: COLORS.accent,
+    paddingVertical: 15,
+    borderRadius: RADIUS.lg,
     marginTop: 16,
   },
   addToListBtnText: {
@@ -2887,17 +2965,18 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   stepNumber: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     backgroundColor: COLORS.primary,
     justifyContent: "center",
     alignItems: "center",
     marginRight: 14,
-    marginTop: 2,
+    marginTop: 1,
+    flexShrink: 0,
   },
   stepNumberText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "700",
     color: "#fff",
   },
@@ -2905,7 +2984,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     color: COLORS.text,
-    lineHeight: 24,
+    lineHeight: 25,
   },
   actionButtons: {
     paddingHorizontal: 20,
@@ -2918,8 +2997,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 10,
     backgroundColor: COLORS.primary,
-    paddingVertical: 16,
-    borderRadius: 16,
+    paddingVertical: 17,
+    borderRadius: RADIUS.xl,
   },
   saveRecipeBtnText: {
     fontSize: 16,
@@ -2932,9 +3011,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 10,
     backgroundColor: COLORS.card,
-    paddingVertical: 16,
-    borderRadius: 16,
-    borderWidth: 2,
+    paddingVertical: 17,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1.5,
     borderColor: COLORS.primary,
   },
   sourceBtnText: {
@@ -2951,11 +3030,11 @@ const styles = StyleSheet.create({
     height: 84,
     paddingBottom: SPACING.xl,
     paddingTop: SPACING.sm,
-    shadowColor: "#000",
+    shadowColor: "#1A100A",
     shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 16,
-    elevation: 10,
+    shadowOpacity: 0.09,
+    shadowRadius: 20,
+    elevation: 14,
     borderTopLeftRadius: RADIUS.xxl,
     borderTopRightRadius: RADIUS.xxl,
   },
@@ -2972,6 +3051,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   tabIconContainerActive: {
-    backgroundColor: COLORS.primary + '12',
+    backgroundColor: COLORS.primaryLight + '1A',
   },
 });
