@@ -1,1333 +1,1369 @@
-import { useState, useEffect, useRef } from "react";
+/**
+ * FoodLens — Premium React Native App
+ * Stack: Expo SDK 54 · Reanimated 3 · Inter + Playfair Display · expo-haptics
+ */
+
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  StyleSheet,
-  Text,
-  View,
-  Image,
-  TouchableOpacity,
-  Alert,
-  SafeAreaView,
-  TextInput,
-  Modal,
-  ActivityIndicator,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
-  Share,
-  Animated,
-  Dimensions,
-  Linking,
+  StyleSheet, Text, View, Image, TouchableOpacity, Alert,
+  ScrollView, TextInput, Modal, KeyboardAvoidingView,
+  Platform, Share, Dimensions, Linking, PanResponder,
   FlatList,
-} from "react-native";
-import { StatusBar } from "expo-status-bar";
-import Constants from "expo-constants";
-import { NavigationContainer } from "@react-navigation/native";
-import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import * as ImagePicker from "expo-image-picker";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Ionicons, MaterialCommunityIcons, Feather } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
+} from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import * as ImagePicker from 'expo-image-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
 import {
-  SafeAreaProvider,
-  useSafeAreaInsets,
-  SafeAreaView as SafeAreaViewEdges,
-} from "react-native-safe-area-context";
+  SafeAreaProvider, useSafeAreaInsets,
+  SafeAreaView as SAV,
+} from 'react-native-safe-area-context';
+import Animated, {
+  useSharedValue, useAnimatedStyle,
+  withSpring, withTiming, withDelay, withRepeat, withSequence,
+  interpolate, Extrapolation, runOnJS,
+} from 'react-native-reanimated';
+import {
+  useFonts,
+  Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold,
+} from '@expo-google-fonts/inter';
+import {
+  PlayfairDisplay_700Bold, PlayfairDisplay_600SemiBold,
+} from '@expo-google-fonts/playfair-display';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
+import { C, FONT, S, R, SHADOW, SPRING, TIMING } from './src/design';
+import {
+  buildServerUrl, humanizeApiError,
+  formatScanDate, getIngredientCategory, getCategoryMeta,
+  getMatchDots, pluralize, capitalize,
+} from './src/utils';
 
-const SPACING = {
-  xs: 4,
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 24,
-  xxl: 32,
-};
+// ─── Constants ────────────────────────────────────────────────────────────────
 
-const RADIUS = {
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 20,
-  xxl: 24,
-  full: 9999,
-};
+const { width: W, height: H } = Dimensions.get('window');
+const SERVER_URL = buildServerUrl();
 
-const SHADOWS = {
-  sm: {
-    shadowColor: "#16120C",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.07,
-    shadowRadius: 5,
-    elevation: 2,
-  },
-  md: {
-    shadowColor: "#16120C",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.09,
-    shadowRadius: 10,
-    elevation: 4,
-  },
-  lg: {
-    shadowColor: "#16120C",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.12,
-    shadowRadius: 18,
-    elevation: 8,
-  },
-};
-
-const API_KEY_STORAGE = "@openai_api_key";
-const FAVORITES_STORAGE = "@favorite_recipes";
-const HISTORY_STORAGE = "@scan_history";
-const INGREDIENTS_STORAGE = "@current_ingredients";
-const RECIPES_STORAGE = "@current_recipes";
-const SHOPPING_LIST_STORAGE = "@shopping_list";
-
-const API_PORT = process.env.EXPO_PUBLIC_SERVER_PORT?.trim() || "5001";
-
-function getExpoDevHostname() {
-  const uri =
-    Constants.expoConfig?.hostUri ??
-    Constants.manifest?.debuggerHost ??
-    Constants.manifest2?.extra?.expoGo?.debuggerHost;
-  if (!uri || typeof uri !== "string") return null;
-  return uri.split(":")[0] || null;
-}
-
-function inferBackendBaseUrl() {
-  const fromEnv = process.env.EXPO_PUBLIC_SERVER_URL?.trim();
-  if (fromEnv) return fromEnv.replace(/\/$/, "");
-  const host = getExpoDevHostname();
-  if (host && host !== "localhost") return `http://${host}:${API_PORT}`;
-  if (Platform.OS === "android") return `http://10.0.2.2:${API_PORT}`;
-  return `http://127.0.0.1:${API_PORT}`;
-}
-
-const SERVER_URL = inferBackendBaseUrl();
-
-function humanizeApiError(body, httpStatus) {
-  if (!body || typeof body !== "string") {
-    return httpStatus ? `Request failed (HTTP ${httpStatus}).` : "Request failed.";
-  }
-  const t = body.trim();
-  if (t.startsWith("<!DOCTYPE") || t.startsWith("<html")) {
-    if (/ERR_NGROK_3200|endpoint .+ is offline/i.test(t)) {
-      return `Backend URL is offline or expired. Start Flask on port ${API_PORT} and keep Expo on LAN, or set EXPO_PUBLIC_SERVER_URL.`;
-    }
-    return `Server sent HTML instead of JSON (HTTP ${httpStatus ?? "?"}). Check that the backend is running.`;
-  }
-  try {
-    const j = JSON.parse(t);
-    if (j.error) return String(j.error);
-    if (j.message) return String(j.message);
-  } catch (_) {}
-  return t.length > 400 ? `${t.slice(0, 400)}…` : t;
-}
-
-// ─── Design System ────────────────────────────────────────────────────────────
-
-const COLORS = {
-  // Dark theme (Scan + Cook)
-  darkBg: "#0D1B12",
-  darkSurface: "#162218",
-  darkAccent: "#A8C5B0",
-  darkText: "#E8F0EB",
-  darkTextSub: "rgba(168,197,176,0.7)",
-
-  // Light theme (content screens)
-  background: "#F2EDE4",
-  card: "#FFFFFF",
-  text: "#16120C",
-  textSecondary: "#6B6258",
-  textLight: "#B8AFA8",
-  border: "#E8E2DA",
-
-  // Primary action
-  primary: "#1F4A32",
-  primaryLight: "#3E7A56",
-
-  // Match indicators
-  matchReady: "#3E7A56",
-  matchMissing: "#D4C9BE",
-
-  // Semantic
-  accent: "#D97A3A",
-  accentLight: "#FBE8D4",
-  success: "#2E6B44",
-  warning: "#C07D1A",
-  error: "#C13333",
-
-  glass: "rgba(242,237,228,0.97)",
-  darkGlass: "rgba(13,27,18,0.97)",
+const KEYS = {
+  apiKey:   '@openai_api_key',
+  favorites:'@favorite_recipes',
+  history:  '@scan_history',
+  ingredients: '@current_ingredients',
+  recipes:  '@current_recipes',
+  shopping: '@shopping_list',
 };
 
 const Stack = createNativeStackNavigator();
-const Tab = createBottomTabNavigator();
+const Tab   = createBottomTabNavigator();
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Haptic Helpers ───────────────────────────────────────────────────────────
 
-const formatScanDate = (dateString) => {
-  if (!dateString) return "";
-  const date = new Date(dateString);
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const scanDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const h = date.getHours();
-  const m = date.getMinutes().toString().padStart(2, "0");
-  const time = `${h}:${m}`;
-  if (scanDay.getTime() === today.getTime()) return `Today ${time}`;
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  if (scanDay.getTime() === yesterday.getTime()) return `Yesterday ${time}`;
-  return `${date.toLocaleDateString()} ${time}`;
+const haptic = {
+  light:   () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light),
+  medium:  () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium),
+  success: () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success),
+  error:   () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error),
 };
 
-const getIngredientCategory = (name) => {
-  const l = name.toLowerCase();
-  if (/chicken|beef|pork|fish|egg|salmon|tuna|lamb|duck|turkey|sausage|bacon|ham|prawn|shrimp|seafood|crab|lobster|meat/.test(l))
-    return "Proteins";
-  if (/milk|cream|cheese|butter|yogurt|cheddar|mozzarella|parmesan|ricotta|brie/.test(l))
-    return "Dairy";
-  if (/tomato|carrot|onion|garlic|potato|lettuce|spinach|pepper|broccoli|mushroom|cucumber|zucchini|celery|corn|avocado|pea|bean|lentil|kale|cabbage|leek/.test(l))
-    return "Vegetables";
-  if (/apple|banana|orange|lemon|lime|berry|strawberry|blueberry|raspberry|grape|pineapple|mango|watermelon|melon/.test(l))
-    return "Fruits";
-  if (/bread|rice|pasta|noodle|spaghetti|flour|oat|cereal|wheat|penne|macaroni|tortilla/.test(l))
-    return "Grains";
-  if (/sauce|ketchup|mayo|mustard|dressing|oil|vinegar|honey|sugar|salt|spice|seasoning|herb|soy|chili/.test(l))
-    return "Condiments";
-  return "Other";
-};
+// ─── Primitive: Pressable with spring scale ───────────────────────────────────
 
-const getIngredientIcon = (name) => {
-  const lowered = name.toLowerCase();
-  if (/chicken|poultry|turkey|duck/.test(lowered)) return { icon: "drumstick-bite", type: "mci", color: "#D4A574" };
-  if (/beef|steak|meat|pork|lamb|bacon|ham|sausage/.test(lowered)) return { icon: "food-steak", type: "mci", color: "#C0392B" };
-  if (/fish|salmon|tuna|cod|shrimp|prawn|seafood|crab|lobster/.test(lowered)) return { icon: "fish", type: "ion", color: "#3498DB" };
-  if (/egg/.test(lowered)) return { icon: "egg-outline", type: "ion", color: "#F5D6BA" };
-  if (/milk|cream/.test(lowered)) return { icon: "cup", type: "mci", color: "#ECF0F1" };
-  if (/cheese|cheddar|mozzarella|parmesan/.test(lowered)) return { icon: "cheese", type: "mci", color: "#F4D03F" };
-  if (/butter/.test(lowered)) return { icon: "cube-outline", type: "ion", color: "#F9E79F" };
-  if (/tomato/.test(lowered)) return { icon: "food-apple", type: "mci", color: "#E74C3C" };
-  if (/carrot/.test(lowered)) return { icon: "carrot", type: "mci", color: "#E67E22" };
-  if (/onion|garlic|shallot/.test(lowered)) return { icon: "food-variant", type: "mci", color: "#D5DBDB" };
-  if (/potato/.test(lowered)) return { icon: "food-variant", type: "mci", color: "#D4A574" };
-  if (/lettuce|salad|spinach|kale|greens/.test(lowered)) return { icon: "leaf", type: "ion", color: "#27AE60" };
-  if (/pepper|capsicum|chili/.test(lowered)) return { icon: "chili-mild", type: "mci", color: "#E74C3C" };
-  if (/mushroom/.test(lowered)) return { icon: "mushroom-outline", type: "mci", color: "#8D6E63" };
-  if (/bread|toast/.test(lowered)) return { icon: "bread-slice-outline", type: "mci", color: "#D4A574" };
-  if (/rice/.test(lowered)) return { icon: "grain", type: "mci", color: "#FDEBD0" };
-  if (/pasta|noodle|spaghetti|penne/.test(lowered)) return { icon: "noodles", type: "mci", color: "#F5CBA7" };
-  if (/sauce|ketchup|mustard/.test(lowered)) return { icon: "bottle-soda-classic-outline", type: "mci", color: "#E74C3C" };
-  if (/oil|olive/.test(lowered)) return { icon: "water-outline", type: "ion", color: "#F4D03F" };
-  if (/honey/.test(lowered)) return { icon: "beehive-outline", type: "mci", color: "#F5B041" };
-  if (/chocolate|cocoa/.test(lowered)) return { icon: "candycane", type: "mci", color: "#6B4226" };
-  return { icon: "food-variant", type: "mci", color: COLORS.primary };
-};
+function Press({ onPress, style, children, scale = 0.97, hapticType = 'light', disabled }) {
+  const s = useSharedValue(1);
+  const anim = useAnimatedStyle(() => ({ transform: [{ scale: s.value }] }));
 
-// ─── Small Components ─────────────────────────────────────────────────────────
-
-const MatchDots = ({ matchPercent }) => {
-  const filled = Math.min(5, Math.max(0, Math.round((matchPercent || 0) / 20)));
   return (
-    <View style={{ flexDirection: "row", gap: 4, alignItems: "center" }}>
-      {[0, 1, 2, 3, 4].map((i) => (
+    <Animated.View style={[anim, style]}>
+      <TouchableOpacity
+        onPress={() => {
+          if (disabled) return;
+          if (hapticType) haptic[hapticType]?.();
+          onPress?.();
+        }}
+        onPressIn={() => { s.value = withSpring(scale, SPRING.snappy); }}
+        onPressOut={() => { s.value = withSpring(1, SPRING.snappy); }}
+        activeOpacity={1}
+        disabled={disabled}
+      >
+        {children}
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
+
+// ─── Skeleton Pulse ───────────────────────────────────────────────────────────
+
+function Skeleton({ width, height, radius = R.md, style }) {
+  const opacity = useSharedValue(0.5);
+
+  useEffect(() => {
+    opacity.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 700 }),
+        withTiming(0.4, { duration: 700 })
+      ), -1
+    );
+  }, []);
+
+  const anim = useAnimatedStyle(() => ({ opacity: opacity.value }));
+  return (
+    <Animated.View
+      style={[{ width, height, borderRadius: radius, backgroundColor: C.rim }, anim, style]}
+    />
+  );
+}
+
+// ─── Match Dots ───────────────────────────────────────────────────────────────
+
+function MatchDots({ matchPercent, size = 8 }) {
+  const filled = getMatchDots(matchPercent);
+  return (
+    <View style={{ flexDirection: 'row', gap: 4, alignItems: 'center' }}>
+      {[0,1,2,3,4].map(i => (
         <View
           key={i}
           style={{
-            width: 9,
-            height: 9,
-            borderRadius: 5,
-            backgroundColor: i < filled ? COLORS.matchReady : COLORS.matchMissing,
+            width: size, height: size, borderRadius: size / 2,
+            backgroundColor: i < filled ? C.emerald : C.emeraldDim,
           }}
         />
       ))}
     </View>
   );
-};
+}
 
-const EmptyState = ({ icon, title, subtitle, actionText, onAction, dark }) => {
-  const textColor = dark ? COLORS.darkText : COLORS.text;
-  const subColor = dark ? COLORS.darkTextSub : COLORS.textSecondary;
+// ─── Empty State ──────────────────────────────────────────────────────────────
+
+function EmptyState({ icon, title, subtitle, action, onAction, dark }) {
   return (
-    <View style={styles.emptyState}>
-      <View style={[styles.emptyStateIcon, dark && { backgroundColor: "rgba(168,197,176,0.15)" }]}>
-        <Ionicons name={icon} size={36} color={dark ? COLORS.darkAccent : COLORS.accent} />
+    <View style={[ui.emptyWrap]}>
+      <View style={[ui.emptyIcon, dark && { backgroundColor: 'rgba(124,184,152,0.12)' }]}>
+        <Ionicons name={icon} size={34} color={dark ? C.darkSage : C.brand} />
       </View>
-      <Text style={[styles.emptyStateTitle, { color: textColor }]}>{title}</Text>
-      <Text style={[styles.emptyStateSubtitle, { color: subColor }]}>{subtitle}</Text>
-      {actionText && onAction && (
-        <TouchableOpacity
-          style={[styles.emptyStateButton, dark && { backgroundColor: COLORS.darkAccent }]}
-          onPress={onAction}
-          activeOpacity={0.85}
-        >
-          <Text style={[styles.emptyStateButtonText, dark && { color: COLORS.darkBg }]}>
-            {actionText}
-          </Text>
-        </TouchableOpacity>
+      <Text style={[ui.emptyTitle, dark && { color: C.darkText, fontFamily: FONT.sans }]}>
+        {title}
+      </Text>
+      <Text style={[ui.emptySub, dark && { color: C.darkTextSub }]}>
+        {subtitle}
+      </Text>
+      {action && onAction && (
+        <Press onPress={onAction} style={ui.emptyBtn} hapticType="medium">
+          <View style={[ui.emptyBtnInner, dark && { backgroundColor: C.darkSage }]}>
+            <Text style={[ui.emptyBtnText, dark && { color: C.dark }]}>{action}</Text>
+          </View>
+        </Press>
       )}
     </View>
   );
-};
+}
 
-// Full-width recipe card for vertical feed
-const FullRecipeCard = ({ recipe, onPress, onFavorite, isFavorited }) => {
-  const isReady = recipe.missing_count === 0;
-  const totalCount = (recipe.matched_count || 0) + (recipe.missing_count || 0);
-  const scaleAnim = useRef(new Animated.Value(1)).current;
+// ─── Section Label ────────────────────────────────────────────────────────────
+
+function SectionLabel({ text, right }) {
+  return (
+    <View style={ui.sectionLabelRow}>
+      <Text style={ui.sectionLabel}>{text}</Text>
+      {right}
+    </View>
+  );
+}
+
+// ─── Pulsing Ring (ScanScreen) ────────────────────────────────────────────────
+
+function PulseRing({ delay = 0, size = 140, color = C.darkSage }) {
+  const scale   = useSharedValue(0.7);
+  const opacity = useSharedValue(0.5);
+
+  useEffect(() => {
+    scale.value = withDelay(delay, withRepeat(
+      withSequence(
+        withTiming(1.9, { duration: 2000 }),
+        withTiming(0.7, { duration: 0 })
+      ), -1
+    ));
+    opacity.value = withDelay(delay, withRepeat(
+      withSequence(
+        withTiming(0, { duration: 2000 }),
+        withTiming(0.5, { duration: 0 })
+      ), -1
+    ));
+  }, []);
+
+  const anim = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    opacity: opacity.value,
+  }));
 
   return (
-    <Animated.View style={[{ transform: [{ scale: scaleAnim }] }]}>
-      <TouchableOpacity
-        style={[styles.fullRecipeCard, isReady && styles.fullRecipeCardReady]}
-        onPress={onPress}
-        onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.98, useNativeDriver: true }).start()}
-        onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true }).start()}
-        activeOpacity={1}
-      >
-        <View style={styles.fullRecipeImageWrap}>
-          {recipe.image ? (
-            <Image source={{ uri: recipe.image }} style={styles.fullRecipeImage} />
-          ) : (
-            <View style={[styles.fullRecipeImagePlaceholder]}>
-              <Text style={{ fontSize: 64 }}>{recipe.emoji || "🍽️"}</Text>
-            </View>
-          )}
-          {isReady && (
-            <View style={styles.readyBadgeOverlay}>
-              <Ionicons name="checkmark-circle" size={14} color="#fff" />
-              <Text style={styles.readyBadgeText}>All ingredients</Text>
-            </View>
-          )}
-        </View>
+    <Animated.View
+      pointerEvents="none"
+      style={[{
+        position: 'absolute', width: size, height: size, borderRadius: size / 2,
+        borderWidth: 1, borderColor: color,
+      }, anim]}
+    />
+  );
+}
 
-        <View style={styles.fullRecipeContent}>
-          <Text style={styles.fullRecipeTitle} numberOfLines={2}>
-            {recipe.name}
-          </Text>
+// ─── Stagger Item (list entrance) ────────────────────────────────────────────
 
-          <View style={styles.fullRecipeMetaRow}>
-            <MatchDots matchPercent={recipe.match_percent} />
-            {totalCount > 0 && (
-              <Text style={styles.fullRecipeMetaText}>
-                {recipe.matched_count}/{totalCount}
-              </Text>
-            )}
-            {recipe.area ? (
-              <View style={styles.fullRecipeTag}>
-                <Text style={styles.fullRecipeTagText}>{recipe.area}</Text>
-              </View>
-            ) : recipe.category ? (
-              <View style={styles.fullRecipeTag}>
-                <Text style={styles.fullRecipeTagText}>{recipe.category}</Text>
-              </View>
-            ) : null}
+function StaggerItem({ index, children }) {
+  const opacity = useSharedValue(0);
+  const ty      = useSharedValue(18);
+
+  useEffect(() => {
+    const d = Math.min(index * 55, 600);
+    opacity.value = withDelay(d, withTiming(1, { duration: TIMING.normal }));
+    ty.value      = withDelay(d, withSpring(0, SPRING.gentle));
+  }, []);
+
+  const anim = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+    transform: [{ translateY: ty.value }],
+  }));
+
+  return <Animated.View style={anim}>{children}</Animated.View>;
+}
+
+// ─── Recipe Card (full-width, Results screen) ─────────────────────────────────
+
+function RecipeCard({ recipe, onPress, onFavorite, isFavorited }) {
+  const isReady  = recipe.missing_count === 0;
+  const total    = (recipe.matched_count || 0) + (recipe.missing_count || 0);
+
+  return (
+    <Press onPress={onPress} scale={0.985} style={ui.card}>
+      {/* Image */}
+      <View style={ui.cardImageWrap}>
+        {recipe.image ? (
+          <Image source={{ uri: recipe.image }} style={ui.cardImage} />
+        ) : (
+          <View style={[ui.cardImagePlaceholder]}>
+            <Text style={{ fontSize: 56 }}>{recipe.emoji || '🍽️'}</Text>
           </View>
+        )}
 
-          {recipe.missing_count > 0 && (
-            <Text style={styles.fullRecipeMissing}>
-              Need {recipe.missing_count} more ingredient{recipe.missing_count !== 1 ? "s" : ""}
+        {/* Gradient overlay */}
+        <LinearGradient
+          colors={['transparent', 'rgba(10,15,12,0.55)']}
+          style={ui.cardGradient}
+        />
+
+        {/* Ready badge on image */}
+        {isReady && (
+          <View style={ui.cardReadyBadge}>
+            <Ionicons name="checkmark-circle" size={12} color="#fff" />
+            <Text style={ui.cardReadyText}>Ready to cook</Text>
+          </View>
+        )}
+
+        {/* Cuisine tag */}
+        {(recipe.area || recipe.category) && (
+          <View style={ui.cardCuisineTag}>
+            <Text style={ui.cardCuisineText}>{recipe.area || recipe.category}</Text>
+          </View>
+        )}
+      </View>
+
+      {/* Content */}
+      <View style={ui.cardContent}>
+        <Text style={ui.cardTitle} numberOfLines={2}>{recipe.name}</Text>
+
+        <View style={ui.cardMetaRow}>
+          <MatchDots matchPercent={recipe.match_percent} />
+          {total > 0 && (
+            <Text style={ui.cardMetaText}>
+              {recipe.matched_count}/{total} ingredients
             </Text>
           )}
         </View>
 
-        <TouchableOpacity
-          style={styles.fullRecipeHeart}
-          onPress={(e) => { e.stopPropagation(); onFavorite(recipe); }}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <Ionicons
-            name={isFavorited ? "heart" : "heart-outline"}
-            size={22}
-            color={isFavorited ? COLORS.error : COLORS.textLight}
-          />
-        </TouchableOpacity>
-      </TouchableOpacity>
-    </Animated.View>
-  );
-};
-
-// Small grid card for Saved tab
-const GridRecipeCard = ({ recipe, onPress }) => (
-  <TouchableOpacity style={styles.gridCard} onPress={onPress} activeOpacity={0.85}>
-    {recipe.image ? (
-      <Image source={{ uri: recipe.image }} style={styles.gridCardImage} />
-    ) : (
-      <View style={[styles.gridCardImagePlaceholder]}>
-        <Text style={{ fontSize: 32 }}>{recipe.emoji || "🍽️"}</Text>
+        {recipe.missing_count > 0 && (
+          <Text style={ui.cardMissing}>
+            {pluralize(recipe.missing_count, 'ingredient')} missing
+          </Text>
+        )}
       </View>
-    )}
-    <Text style={styles.gridCardName} numberOfLines={2}>{recipe.name}</Text>
-  </TouchableOpacity>
-);
 
-// ─── ScanTab ──────────────────────────────────────────────────────────────────
+      {/* Heart */}
+      <TouchableOpacity
+        style={ui.cardHeart}
+        onPress={(e) => {
+          e.stopPropagation();
+          haptic.light();
+          onFavorite(recipe);
+        }}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      >
+        <Ionicons
+          name={isFavorited ? 'heart' : 'heart-outline'}
+          size={22}
+          color={isFavorited ? C.rose : C.ink300}
+        />
+      </TouchableOpacity>
+    </Press>
+  );
+}
 
-function ScanTab({ navigation }) {
+// ─── Small grid card (Saved screen) ──────────────────────────────────────────
+
+function GridCard({ recipe, onPress }) {
+  return (
+    <Press onPress={onPress} scale={0.96} style={ui.gridCard}>
+      {recipe.image ? (
+        <Image source={{ uri: recipe.image }} style={ui.gridCardImg} />
+      ) : (
+        <View style={ui.gridCardPlaceholder}>
+          <Text style={{ fontSize: 30 }}>{recipe.emoji || '🍽️'}</Text>
+        </View>
+      )}
+      <View style={ui.gridCardBody}>
+        <Text style={ui.gridCardTitle} numberOfLines={2}>{recipe.name}</Text>
+      </View>
+    </Press>
+  );
+}
+
+// ─── API Key Modal ────────────────────────────────────────────────────────────
+
+function ApiKeyModal({ visible, onClose, value, onChange, onSave }) {
+  return (
+    <Modal visible={visible} transparent animationType="fade">
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={ui.modalOverlay}
+      >
+        <Animated.View style={ui.modalSheet}>
+          <View style={ui.modalDragHandle} />
+
+          <View style={ui.modalIconRow}>
+            <View style={ui.modalIconBg}>
+              <Ionicons name="key-outline" size={22} color={C.brand} />
+            </View>
+          </View>
+          <Text style={ui.modalTitle}>OpenAI API Key</Text>
+          <Text style={ui.modalSub}>Required for AI ingredient detection</Text>
+
+          <TextInput
+            style={ui.input}
+            placeholder="sk-…"
+            placeholderTextColor={C.ink300}
+            value={value}
+            onChangeText={onChange}
+            secureTextEntry
+            autoCapitalize="none"
+          />
+
+          <View style={ui.modalBtnRow}>
+            <Press onPress={onClose} style={{ flex: 1 }}>
+              <View style={ui.btnSecondary}>
+                <Text style={ui.btnSecondaryText}>Cancel</Text>
+              </View>
+            </Press>
+            <Press onPress={onSave} style={{ flex: 1 }} disabled={!value} hapticType="medium">
+              <View style={[ui.btnPrimary, !value && { opacity: 0.45 }]}>
+                <Text style={ui.btnPrimaryText}>Save Key</Text>
+              </View>
+            </Press>
+          </View>
+        </Animated.View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+// ─── ScanScreen ───────────────────────────────────────────────────────────────
+
+function ScanScreen({ navigation }) {
   const [ingredients, setIngredients] = useState([]);
   const [recipes, setRecipes] = useState([]);
-  const [lastScanDate, setLastScanDate] = useState(null);
-  const [scanning, setScanning] = useState(false);
-  const [searchingRecipes, setSearchingRecipes] = useState(false);
-  const [scanPhase, setScanPhase] = useState("idle"); // idle | analyzing | found | searching
-  const [apiKey, setApiKey] = useState("");
-  const [showApiModal, setShowApiModal] = useState(false);
-  const [tempApiKey, setTempApiKey] = useState("");
-  const progressAnim = useRef(new Animated.Value(0)).current;
-  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const [lastDate, setLastDate] = useState(null);
+  const [phase, setPhase] = useState('idle'); // idle | analyzing | found | searching
+  const [apiKey, setApiKey] = useState('');
+  const [showKeyModal, setShowKeyModal] = useState(false);
+  const [tempKey, setTempKey] = useState('');
+  const [visibleCount, setVisibleCount] = useState(0);
 
+  const progressVal = useSharedValue(0);
+  const progressAnim = useAnimatedStyle(() => ({
+    width: `${interpolate(progressVal.value, [0, 1], [0, 100], Extrapolation.CLAMP)}%`,
+  }));
+
+  const isLoading   = phase !== 'idle';
+  const hasResults  = recipes.length > 0 && !isLoading;
+
+  useEffect(() => { loadData(); }, []);
   useEffect(() => {
-    loadData();
-    const unsub = navigation.addListener("focus", loadData);
+    const unsub = navigation.addListener('focus', loadData);
     return unsub;
   }, [navigation]);
 
-  const loadData = async () => {
-    try {
-      const [savedKey, savedIngredients, savedRecipes, savedHistory] = await Promise.all([
-        AsyncStorage.getItem(API_KEY_STORAGE),
-        AsyncStorage.getItem(INGREDIENTS_STORAGE),
-        AsyncStorage.getItem(RECIPES_STORAGE),
-        AsyncStorage.getItem(HISTORY_STORAGE),
-      ]);
-      if (savedKey) setApiKey(savedKey.trim());
-      if (savedIngredients) setIngredients(JSON.parse(savedIngredients));
-      if (savedRecipes) {
-        const parsed = JSON.parse(savedRecipes);
-        setRecipes(parsed.recipes || []);
-      }
-      if (savedHistory) {
-        const history = JSON.parse(savedHistory);
-        if (history.length > 0) setLastScanDate(history[0].date);
-      }
-    } catch (e) {
-      console.error("Failed to load data:", e);
+  // Stagger ingredient reveal during "found" phase
+  useEffect(() => {
+    if (phase === 'found' && ingredients.length > 0) {
+      setVisibleCount(0);
+      const t = setInterval(() => {
+        setVisibleCount(c => {
+          if (c >= ingredients.length) { clearInterval(t); return c; }
+          return c + 1;
+        });
+      }, 110);
+      return () => clearInterval(t);
     }
-  };
+  }, [phase, ingredients.length]);
 
-  const saveApiKey = async () => {
-    const key = tempApiKey.trim();
-    if (!key) { Alert.alert("Error", "Enter a valid API key."); return; }
-    await AsyncStorage.setItem(API_KEY_STORAGE, key);
-    setApiKey(key);
-    setShowApiModal(false);
-  };
+  const animProgress = useCallback((to, duration) => {
+    return new Promise(res => {
+      progressVal.value = withTiming(to, { duration }, () => runOnJS(res)());
+    });
+  }, []);
 
-  const startScan = async (useCamera) => {
-    if (!apiKey) { setShowApiModal(true); return; }
+  async function loadData() {
+    try {
+      const [k, ing, rec, hist] = await Promise.all([
+        AsyncStorage.getItem(KEYS.apiKey),
+        AsyncStorage.getItem(KEYS.ingredients),
+        AsyncStorage.getItem(KEYS.recipes),
+        AsyncStorage.getItem(KEYS.history),
+      ]);
+      if (k) setApiKey(k.trim());
+      if (ing) setIngredients(JSON.parse(ing));
+      if (rec) { const p = JSON.parse(rec); setRecipes(p.recipes || []); }
+      if (hist) { const h = JSON.parse(hist); if (h.length) setLastDate(h[0].date); }
+    } catch (e) { console.error(e); }
+  }
 
-    const permission = useCamera
+  async function saveApiKey() {
+    const k = tempKey.trim();
+    if (!k) return;
+    await AsyncStorage.setItem(KEYS.apiKey, k);
+    setApiKey(k);
+    setShowKeyModal(false);
+    haptic.success();
+  }
+
+  async function startScan(useCamera) {
+    if (!apiKey) { setShowKeyModal(true); return; }
+    haptic.medium();
+
+    const perm = useCamera
       ? await ImagePicker.requestCameraPermissionsAsync()
       : await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert("Permission Required", "Please allow access to continue.");
-      return;
-    }
+    if (!perm.granted) { Alert.alert('Permission Required', 'Please allow access to continue.'); return; }
 
     const result = useCamera
-      ? await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], allowsEditing: true, aspect: [4, 3], quality: 0.8, base64: true })
-      : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], allowsEditing: true, aspect: [4, 3], quality: 0.8, base64: true });
+      ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [4, 3], quality: 0.8, base64: true })
+      : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [4, 3], quality: 0.8, base64: true });
 
     if (!result.canceled && result.assets[0].base64) {
       analyzeImage(result.assets[0].base64, result.assets[0].uri);
     }
-  };
+  }
 
-  const animateProgress = (toValue, duration) => {
-    return new Promise((resolve) => {
-      Animated.timing(progressAnim, { toValue, duration, useNativeDriver: false }).start(resolve);
-    });
-  };
-
-  const analyzeImage = async (base64, imageUri) => {
-    setScanning(true);
-    setScanPhase("analyzing");
-    progressAnim.setValue(0);
-    animateProgress(0.55, 12000);
+  async function analyzeImage(base64, uri) {
+    setPhase('analyzing');
+    progressVal.setValue(0);
+    animateProgressBackground(0.55, 12000);
 
     try {
-      const response = await fetch(`${SERVER_URL}/analyze`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
+      const r = await fetch(`${SERVER_URL}/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
         body: JSON.stringify({ image_base64: base64, api_key: apiKey.trim() }),
       });
-      const responseText = await response.text();
-      if (!response.ok) throw new Error(humanizeApiError(responseText, response.status));
+      const text = await r.text();
+      if (!r.ok) throw new Error(humanizeApiError(text, r.status));
 
       let data;
-      try { data = JSON.parse(responseText); } catch { throw new Error(humanizeApiError(responseText, response.status)); }
+      try { data = JSON.parse(text); } catch { throw new Error(humanizeApiError(text, r.status)); }
 
-      const newIngredients = data.ingredients || [];
-      setIngredients(newIngredients);
-      await AsyncStorage.setItem(INGREDIENTS_STORAGE, JSON.stringify(newIngredients));
+      const newIng = data.ingredients || [];
+      setIngredients(newIng);
+      await AsyncStorage.setItem(KEYS.ingredients, JSON.stringify(newIng));
 
-      const historyEntry = { id: Date.now().toString(), date: new Date().toISOString(), imageUri, ingredients: newIngredients };
-      const savedHistory = await AsyncStorage.getItem(HISTORY_STORAGE);
-      const history = savedHistory ? JSON.parse(savedHistory) : [];
-      await AsyncStorage.setItem(HISTORY_STORAGE, JSON.stringify([historyEntry, ...history].slice(0, 30)));
-      setLastScanDate(historyEntry.date);
+      const entry = { id: Date.now().toString(), date: new Date().toISOString(), uri, ingredients: newIng };
+      const hist  = await AsyncStorage.getItem(KEYS.history);
+      await AsyncStorage.setItem(KEYS.history, JSON.stringify([entry, ...(hist ? JSON.parse(hist) : [])].slice(0, 30)));
+      setLastDate(entry.date);
 
-      setScanPhase("found");
-      await animateProgress(0.65, 300);
+      setPhase('found');
+      haptic.success();
+      progressVal.value = withTiming(0.62, { duration: 300 });
 
-      if (newIngredients.length > 0) {
-        await searchRecipes(newIngredients);
-      } else {
-        setScanning(false);
-        setScanPhase("idle");
-      }
+      if (newIng.length > 0) await searchRecipes(newIng);
+      else { setPhase('idle'); progressVal.value = withTiming(0, { duration: 200 }); }
     } catch (e) {
-      console.error("Analysis error:", e);
-      Alert.alert("Analysis Failed", e.message || "Could not analyze image.");
-      setScanning(false);
-      setScanPhase("idle");
-      progressAnim.setValue(0);
+      Alert.alert('Analysis Failed', e.message || 'Could not analyze image.');
+      setPhase('idle');
+      progressVal.value = withTiming(0, { duration: 200 });
     }
-  };
+  }
 
-  const searchRecipes = async (ingredientsList) => {
-    setSearchingRecipes(true);
-    setScanPhase("searching");
-    animateProgress(0.92, 15000);
+  // Non-awaited progress background animation
+  function animateProgressBackground(target, duration) {
+    progressVal.value = withTiming(target, { duration });
+  }
+
+  async function searchRecipes(ing) {
+    setPhase('searching');
+    animateProgressBackground(0.92, 15000);
 
     try {
-      const response = await fetch(`${SERVER_URL}/search-recipes`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
-        body: JSON.stringify({ ingredients: ingredientsList }),
+      const r = await fetch(`${SERVER_URL}/search-recipes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+        body: JSON.stringify({ ingredients: ing }),
       });
-      const responseText = await response.text();
-      if (!response.ok) throw new Error(humanizeApiError(responseText, response.status));
+      const text = await r.text();
+      if (!r.ok) throw new Error(humanizeApiError(text, r.status));
 
       let data;
-      try { data = JSON.parse(responseText); } catch { throw new Error(humanizeApiError(responseText, response.status)); }
+      try { data = JSON.parse(text); } catch { throw new Error(humanizeApiError(text, r.status)); }
 
-      const newRecipes = data.recipes || [];
-      setRecipes(newRecipes);
-      await AsyncStorage.setItem(RECIPES_STORAGE, JSON.stringify({
-        recipes: newRecipes,
-        categorized: data.categorized || {},
-      }));
+      const newRec = data.recipes || [];
+      setRecipes(newRec);
+      await AsyncStorage.setItem(KEYS.recipes, JSON.stringify({ recipes: newRec, categorized: data.categorized || {} }));
 
-      await animateProgress(1, 400);
-      setScanning(false);
-      setSearchingRecipes(false);
-      setScanPhase("idle");
-      progressAnim.setValue(0);
+      progressVal.value = withTiming(1, { duration: 400 });
 
-      if (newRecipes.length > 0) {
-        navigation.navigate("Results", { recipes: newRecipes, ingredients: ingredientsList });
-      }
+      setTimeout(() => {
+        setPhase('idle');
+        progressVal.value = withTiming(0, { duration: 200 });
+        if (newRec.length > 0) navigation.navigate('Results', { recipes: newRec, ingredients: ing });
+      }, 500);
     } catch (e) {
-      console.error("Recipe search error:", e);
-      Alert.alert("Search Failed", e.message || "Could not find recipes.");
-      setScanning(false);
-      setSearchingRecipes(false);
-      setScanPhase("idle");
-      progressAnim.setValue(0);
+      Alert.alert('Search Failed', e.message || 'Could not find recipes.');
+      setPhase('idle');
+      progressVal.value = withTiming(0, { duration: 200 });
     }
-  };
+  }
 
-  const clearResults = async () => {
-    setRecipes([]);
-    setIngredients([]);
-    setLastScanDate(null);
-    await AsyncStorage.multiRemove([INGREDIENTS_STORAGE, RECIPES_STORAGE]);
-  };
+  async function clearResults() {
+    haptic.light();
+    setRecipes([]); setIngredients([]); setLastDate(null);
+    await AsyncStorage.multiRemove([KEYS.ingredients, KEYS.recipes]);
+  }
 
-  const isLoading = scanning || searchingRecipes;
-  const hasResults = recipes.length > 0 && !isLoading;
+  const loadingLabel = phase === 'analyzing' ? 'Scanning your fridge…'
+    : phase === 'found' ? `Found ${ingredients.length} ingredients!`
+    : phase === 'searching' ? 'Finding best recipes…'
+    : '';
 
-  const getLoadingText = () => {
-    if (scanPhase === "analyzing") return "Scanning your fridge...";
-    if (scanPhase === "found") return `Found ${ingredients.length} ingredient${ingredients.length !== 1 ? "s" : ""}!`;
-    if (scanPhase === "searching") return "Finding best matches...";
-    return "Working...";
-  };
+  const loadingSubLabel = phase === 'analyzing' ? 'AI is detecting ingredients'
+    : phase === 'found' ? 'Matching to 50,000+ recipes'
+    : phase === 'searching' ? 'Almost there…'
+    : '';
 
-  const getLoadingSubtext = () => {
-    if (scanPhase === "analyzing") return "AI is detecting ingredients";
-    if (scanPhase === "found") return "Searching for recipes now";
-    if (scanPhase === "searching") return "Matching to your pantry";
-    return "";
-  };
-
-  const progressWidth = progressAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ["0%", "100%"],
-  });
-
+  // ── Loading Screen ──────────────────────────────────────────────────────────
   if (isLoading) {
     return (
-      <View style={styles.scanLoadingScreen}>
+      <View style={[sc.scanRoot]}>
         <StatusBar style="light" />
 
-        <View style={styles.scanLoadingTop}>
-          <View style={styles.scanLoadingIconRing}>
-            <ActivityIndicator color={COLORS.darkAccent} size="large" />
+        <View style={sc.loadingTop}>
+          <View style={sc.loadingSpinner}>
+            {[0, 600, 1200].map(d => <PulseRing key={d} delay={d} size={100} />)}
+            <View style={sc.loadingIconBg}>
+              <Ionicons name="camera-outline" size={30} color={C.darkSage} />
+            </View>
           </View>
-          <Text style={styles.scanLoadingTitle}>{getLoadingText()}</Text>
-          <Text style={styles.scanLoadingSubtitle}>{getLoadingSubtext()}</Text>
+          <Text style={sc.loadingTitle}>{loadingLabel}</Text>
+          <Text style={sc.loadingSubtitle}>{loadingSubLabel}</Text>
         </View>
 
-        {scanPhase !== "analyzing" && ingredients.length > 0 && (
-          <View style={styles.scanFoundChips}>
-            {ingredients.slice(0, 8).map((ing, i) => (
-              <View key={i} style={styles.scanFoundChip}>
-                <Text style={styles.scanFoundChipText}>{ing.name}</Text>
-              </View>
+        {phase !== 'analyzing' && ingredients.length > 0 && (
+          <View style={sc.ingredientCloud}>
+            {ingredients.slice(0, 10).map((ing, i) => (
+              i < visibleCount ? (
+                <StaggerItem key={i} index={i}>
+                  <View style={sc.ingredientPill}>
+                    <Text style={sc.ingredientPillText}>{capitalize(ing.name)}</Text>
+                  </View>
+                </StaggerItem>
+              ) : null
             ))}
-            {ingredients.length > 8 && (
-              <View style={styles.scanFoundChip}>
-                <Text style={styles.scanFoundChipText}>+{ingredients.length - 8}</Text>
-              </View>
-            )}
           </View>
         )}
 
-        <View style={styles.scanProgressWrap}>
-          <View style={styles.scanProgressTrack}>
-            <Animated.View style={[styles.scanProgressBar, { width: progressWidth }]} />
+        <View style={sc.loadingBottom}>
+          <View style={sc.progressTrack}>
+            <Animated.View style={[sc.progressFill, progressAnim]} />
           </View>
-          <Text style={styles.scanProgressLabel}>
-            {scanPhase === "found"
-              ? `${ingredients.length} ingredients detected`
-              : "This may take a moment"}
-          </Text>
+          <Text style={sc.progressLabel}>This may take a moment</Text>
         </View>
       </View>
     );
   }
 
+  // ── Has Previous Results ────────────────────────────────────────────────────
   if (hasResults) {
-    const topRecipes = recipes.slice(0, 3);
+    const top3 = recipes.slice(0, 3);
     return (
-      <SafeAreaView style={styles.scanScreenDark}>
+      <View style={sc.scanRoot}>
         <StatusBar style="light" />
+        <View style={sc.safeTop} />
 
-        <View style={styles.scanHasResultsHeader}>
-          <Text style={styles.scanHasResultsTitle}>Scan Again</Text>
-          <TouchableOpacity onPress={() => setShowApiModal(true)} style={styles.scanSettingsBtn}>
-            <Ionicons name="settings-outline" size={22} color={COLORS.darkAccent} />
+        <View style={sc.header}>
+          <Text style={sc.headerTitle}>FoodLens</Text>
+          <TouchableOpacity style={sc.settingsBtn} onPress={() => { haptic.light(); setShowKeyModal(true); }}>
+            <Ionicons name="settings-outline" size={20} color={C.darkSage} />
           </TouchableOpacity>
         </View>
 
-        <View style={styles.scanLastScanCard}>
-          <View style={styles.scanLastScanMeta}>
-            <Text style={styles.scanLastScanLabel}>Last scan: {formatScanDate(lastScanDate)}</Text>
-            <TouchableOpacity onPress={clearResults} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name="close" size={18} color={COLORS.darkAccent} />
+        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
+          {/* Last scan card */}
+          <View style={sc.lastScanCard}>
+            <View style={sc.lastScanHeader}>
+              <View style={sc.lastScanDot} />
+              <Text style={sc.lastScanLabel}>{formatScanDate(lastDate)}</Text>
+              <TouchableOpacity onPress={clearResults} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close" size={18} color={C.darkTextSub} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: S[3] }}>
+              {top3.map((rec, i) => (
+                <TouchableOpacity
+                  key={i}
+                  style={sc.miniCard}
+                  onPress={() => { haptic.light(); navigation.navigate('RecipeDetail', { recipe: rec, userIngredients: ingredients }); }}
+                  activeOpacity={0.88}
+                >
+                  {rec.image
+                    ? <Image source={{ uri: rec.image }} style={sc.miniCardImg} />
+                    : <View style={[sc.miniCardImg, { backgroundColor: C.darkRim, justifyContent: 'center', alignItems: 'center' }]}>
+                        <Text style={{ fontSize: 28 }}>{rec.emoji || '🍽️'}</Text>
+                      </View>
+                  }
+                  <Text style={sc.miniCardName} numberOfLines={2}>{rec.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            <Text style={sc.lastScanStats}>
+              {ingredients.length} ingredients · {recipes.length} recipes found
+            </Text>
+          </View>
+
+          <Press
+            onPress={() => { haptic.medium(); navigation.navigate('Results', { recipes, ingredients }); }}
+            style={sc.seeAllBtn}
+          >
+            <View style={sc.seeAllInner}>
+              <Text style={sc.seeAllText}>See all recipes</Text>
+              <Ionicons name="arrow-forward" size={16} color={C.darkSage} />
+            </View>
+          </Press>
+
+          <View style={{ height: S[4] }} />
+
+          {/* Scan Again */}
+          <Press onPress={() => startScan(true)} style={{ marginHorizontal: S[6] }} hapticType="medium">
+            <LinearGradient
+              colors={[C.brandMid, C.brand]}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+              style={sc.primaryBtn}
+            >
+              <Ionicons name="camera-outline" size={20} color="#fff" />
+              <Text style={sc.primaryBtnText}>Scan Again</Text>
+            </LinearGradient>
+          </Press>
+
+          <View style={sc.secondaryRow}>
+            <TouchableOpacity style={sc.secondaryBtn} onPress={() => startScan(false)}>
+              <Text style={sc.secondaryBtnText}>Upload photo</Text>
             </TouchableOpacity>
           </View>
-
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.scanMiniCards}>
-            {topRecipes.map((recipe, i) => (
-              <TouchableOpacity
-                key={i}
-                style={styles.scanMiniCard}
-                onPress={() => navigation.navigate("RecipeDetail", { recipe, userIngredients: ingredients })}
-              >
-                {recipe.image ? (
-                  <Image source={{ uri: recipe.image }} style={styles.scanMiniCardImage} />
-                ) : (
-                  <View style={styles.scanMiniCardPlaceholder}>
-                    <Text style={{ fontSize: 28 }}>{recipe.emoji || "🍽️"}</Text>
-                  </View>
-                )}
-                <Text style={styles.scanMiniCardName} numberOfLines={2}>{recipe.name}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-
-          <Text style={styles.scanLastScanStats}>
-            {ingredients.length} ingredients · {recipes.length} recipes
-          </Text>
-        </View>
-
-        <TouchableOpacity
-          style={styles.scanPrimaryBtn}
-          onPress={() => startScan(true)}
-          activeOpacity={0.88}
-        >
-          <LinearGradient
-            colors={[COLORS.primary, "#2D6644"]}
-            style={styles.scanPrimaryBtnGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-          >
-            <Ionicons name="camera-outline" size={22} color="#fff" />
-            <Text style={styles.scanPrimaryBtnText}>Scan Again</Text>
-          </LinearGradient>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.scanSeeAllBtn}
-          onPress={() => navigation.navigate("Results", { recipes, ingredients })}
-        >
-          <Text style={styles.scanSeeAllText}>See all results</Text>
-          <Ionicons name="chevron-down" size={16} color={COLORS.darkAccent} />
-        </TouchableOpacity>
-
-        <View style={styles.scanSecondaryRow}>
-          <TouchableOpacity style={styles.scanSecondaryBtn} onPress={() => startScan(false)}>
-            <Text style={styles.scanSecondaryBtnText}>Upload photo</Text>
-          </TouchableOpacity>
-        </View>
+        </ScrollView>
 
         <ApiKeyModal
-          visible={showApiModal}
-          onClose={() => setShowApiModal(false)}
-          tempKey={tempApiKey}
-          setTempKey={setTempApiKey}
-          onSave={saveApiKey}
+          visible={showKeyModal} onClose={() => setShowKeyModal(false)}
+          value={tempKey} onChange={setTempKey} onSave={saveApiKey}
         />
-      </SafeAreaView>
+      </View>
     );
   }
 
-  // Empty state
+  // ── Empty State ─────────────────────────────────────────────────────────────
   return (
-    <SafeAreaView style={styles.scanScreenDark}>
+    <View style={sc.scanRoot}>
       <StatusBar style="light" />
+      <View style={sc.safeTop} />
 
-      <View style={styles.scanHeader}>
-        <TouchableOpacity onPress={() => setShowApiModal(true)} style={styles.scanSettingsBtn}>
-          <Ionicons name="settings-outline" size={22} color={COLORS.darkAccent} />
+      <View style={sc.header}>
+        <Text style={sc.headerTitle}>FoodLens</Text>
+        <TouchableOpacity style={sc.settingsBtn} onPress={() => { haptic.light(); setShowKeyModal(true); }}>
+          <Ionicons name="settings-outline" size={20} color={C.darkSage} />
         </TouchableOpacity>
       </View>
 
-      <View style={styles.scanEmptyContent}>
-        <View style={styles.scanIllustration}>
-          <LinearGradient
-            colors={[COLORS.darkSurface, "#1E3328"]}
-            style={styles.scanIllustrationGradient}
-          >
-            <Text style={styles.scanIllustrationEmoji}>🥦</Text>
-            <Text style={[styles.scanIllustrationEmoji, { top: 20, left: -30, fontSize: 36 }]}>🥚</Text>
-            <Text style={[styles.scanIllustrationEmoji, { top: -10, right: -20, fontSize: 32 }]}>🧅</Text>
-            <Text style={[styles.scanIllustrationEmoji, { bottom: 20, left: -10, fontSize: 28 }]}>🥕</Text>
-            <Text style={[styles.scanIllustrationEmoji, { bottom: 10, right: -30, fontSize: 34 }]}>🧀</Text>
-          </LinearGradient>
+      <View style={sc.emptyCenter}>
+        {/* Concentric pulse rings */}
+        <View style={sc.ringWrap}>
+          {[0, 700, 1400].map(d => <PulseRing key={d} delay={d} size={160} />)}
+          <View style={sc.scanIconContainer}>
+            <Ionicons name="camera-outline" size={38} color={C.darkSage} />
+          </View>
         </View>
 
-        <Text style={styles.scanEmptyClaim}>What's in your fridge today?</Text>
+        <Text style={sc.emptyClaim}>What's in your fridge?</Text>
+        <Text style={sc.emptySubclaim}>AI detects ingredients and finds recipes instantly</Text>
 
-        <TouchableOpacity
-          style={styles.scanPrimaryBtn}
-          onPress={() => startScan(true)}
-          activeOpacity={0.88}
-        >
+        <Press onPress={() => startScan(true)} style={sc.primaryBtnWrap} hapticType="medium">
           <LinearGradient
-            colors={[COLORS.primary, "#2D6644"]}
-            style={styles.scanPrimaryBtnGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
+            colors={[C.brandMid, C.brand]}
+            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+            style={sc.primaryBtn}
           >
-            <Ionicons name="camera-outline" size={22} color="#fff" />
-            <Text style={styles.scanPrimaryBtnText}>Scan Your Fridge</Text>
+            <Ionicons name="camera-outline" size={20} color="#fff" />
+            <Text style={sc.primaryBtnText}>Scan Your Fridge</Text>
           </LinearGradient>
-        </TouchableOpacity>
+        </Press>
 
-        <View style={styles.scanSecondaryRow}>
-          <TouchableOpacity style={styles.scanSecondaryBtn} onPress={() => startScan(false)}>
-            <Text style={styles.scanSecondaryBtnText}>Upload photo</Text>
+        <View style={sc.secondaryRow}>
+          <TouchableOpacity style={sc.secondaryBtn} onPress={() => startScan(false)}>
+            <Text style={sc.secondaryBtnText}>Upload photo</Text>
           </TouchableOpacity>
-          <Text style={styles.scanSecondaryDot}>·</Text>
-          <TouchableOpacity
-            style={styles.scanSecondaryBtn}
-            onPress={() => navigation.navigate("KitchenTab")}
-          >
-            <Text style={styles.scanSecondaryBtnText}>Add manually</Text>
+          <Text style={sc.dot}>·</Text>
+          <TouchableOpacity style={sc.secondaryBtn} onPress={() => navigation.navigate('KitchenTab')}>
+            <Text style={sc.secondaryBtnText}>Add manually</Text>
           </TouchableOpacity>
         </View>
       </View>
 
       <ApiKeyModal
-        visible={showApiModal}
-        onClose={() => setShowApiModal(false)}
-        tempKey={tempApiKey}
-        setTempKey={setTempApiKey}
-        onSave={saveApiKey}
+        visible={showKeyModal} onClose={() => setShowKeyModal(false)}
+        value={tempKey} onChange={setTempKey} onSave={saveApiKey}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 
 // ─── ResultsScreen ────────────────────────────────────────────────────────────
 
+const FILTER_TABS = [
+  { id: 'all',    label: 'All' },
+  { id: 'ready',  label: 'Ready' },
+  { id: 'almost', label: 'Almost' },
+  { id: 'shop',   label: 'Shopping' },
+];
+
 function ResultsScreen({ route, navigation }) {
   const { recipes = [], ingredients = [] } = route.params || {};
-  const [filter, setFilter] = useState("all");
+  const [filter, setFilter]     = useState('all');
   const [favorites, setFavorites] = useState([]);
+  const [tabWidths, setTabWidths] = useState([]);
+
+  const indicatorX   = useSharedValue(0);
+  const indicatorW   = useSharedValue(0);
+  const indicatorAnim = useAnimatedStyle(() => ({
+    transform: [{ translateX: indicatorX.value }],
+    width: indicatorW.value,
+  }));
 
   useEffect(() => {
-    loadFavorites();
+    AsyncStorage.getItem(KEYS.favorites).then(s => {
+      if (s) setFavorites(JSON.parse(s));
+    });
   }, []);
 
-  const loadFavorites = async () => {
-    const saved = await AsyncStorage.getItem(FAVORITES_STORAGE);
-    if (saved) setFavorites(JSON.parse(saved));
-  };
+  const moveIndicator = useCallback((idx) => {
+    if (tabWidths[idx] !== undefined) {
+      const x = tabWidths.slice(0, idx).reduce((a, b) => a + b, 0);
+      indicatorX.value = withSpring(x, SPRING.snappy);
+      indicatorW.value = withSpring(tabWidths[idx], SPRING.snappy);
+    }
+  }, [tabWidths]);
 
-  const toggleFavorite = async (recipe) => {
-    const isFav = favorites.some((f) => f.id === recipe.id);
-    const updated = isFav
-      ? favorites.filter((f) => f.id !== recipe.id)
+  useEffect(() => {
+    const idx = FILTER_TABS.findIndex(f => f.id === filter);
+    moveIndicator(idx);
+  }, [filter, tabWidths, moveIndicator]);
+
+  async function toggleFav(recipe) {
+    haptic.light();
+    const isFav = favorites.some(f => f.id === recipe.id);
+    const upd   = isFav
+      ? favorites.filter(f => f.id !== recipe.id)
       : [{ ...recipe, savedAt: new Date().toISOString() }, ...favorites];
-    setFavorites(updated);
-    await AsyncStorage.setItem(FAVORITES_STORAGE, JSON.stringify(updated));
+    setFavorites(upd);
+    await AsyncStorage.setItem(KEYS.favorites, JSON.stringify(upd));
+  }
+
+  const isFaved = recipe => favorites.some(f => f.id === recipe.id);
+
+  const counts = {
+    all:    recipes.length,
+    ready:  recipes.filter(r => r.missing_count === 0).length,
+    almost: recipes.filter(r => r.missing_count > 0 && r.missing_count <= 2).length,
+    shop:   recipes.filter(r => r.missing_count > 2).length,
   };
 
-  const isFavorited = (recipe) => favorites.some((f) => f.id === recipe.id);
-
-  const FILTERS = [
-    { id: "all", label: "All", count: recipes.length },
-    { id: "ready", label: "Ready", icon: "checkmark-circle" },
-    { id: "almost", label: "Almost" },
-    { id: "shop", label: "Shopping" },
-  ];
-
-  const filteredRecipes = recipes.filter((r) => {
-    if (filter === "all") return true;
-    if (filter === "ready") return r.missing_count === 0;
-    if (filter === "almost") return r.missing_count > 0 && r.missing_count <= 2;
-    if (filter === "shop") return r.missing_count > 2;
+  const visible = recipes.filter(r => {
+    if (filter === 'all')    return true;
+    if (filter === 'ready')  return r.missing_count === 0;
+    if (filter === 'almost') return r.missing_count > 0 && r.missing_count <= 2;
+    if (filter === 'shop')   return r.missing_count > 2;
     return true;
   });
 
+  const insets = useSafeAreaInsets();
+
   return (
-    <SafeAreaViewEdges style={styles.resultsScreen} edges={["top", "left", "right"]}>
+    <View style={[re.root, { paddingTop: insets.top }]}>
       <StatusBar style="dark" />
 
       {/* Header */}
-      <View style={styles.resultsHeader}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.resultsBackBtn}>
-          <Ionicons name="arrow-back" size={24} color={COLORS.text} />
-        </TouchableOpacity>
-        <View>
-          <Text style={styles.resultsHeaderTitle}>Recipes for you</Text>
-          <Text style={styles.resultsHeaderSub}>{ingredients.length} ingredients scanned</Text>
+      <View style={re.header}>
+        <Press onPress={() => navigation.goBack()} scale={0.92}>
+          <View style={re.backBtn}>
+            <Ionicons name="arrow-back" size={20} color={C.ink700} />
+          </View>
+        </Press>
+        <View style={re.headerCenter}>
+          <Text style={re.headerTitle}>Recipes for you</Text>
+          <Text style={re.headerSub}>{pluralize(ingredients.length, 'ingredient')} scanned</Text>
         </View>
         <View style={{ width: 40 }} />
       </View>
 
-      {/* Filter Tabs */}
-      <View style={styles.filterTabsWrap}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterTabsScroll}>
-          {FILTERS.map((f) => {
-            const count = f.id === "all"
-              ? recipes.length
-              : recipes.filter((r) => {
-                  if (f.id === "ready") return r.missing_count === 0;
-                  if (f.id === "almost") return r.missing_count > 0 && r.missing_count <= 2;
-                  if (f.id === "shop") return r.missing_count > 2;
-                  return true;
-                }).length;
-            return (
-              <TouchableOpacity
-                key={f.id}
-                style={[styles.filterTab, filter === f.id && styles.filterTabActive]}
-                onPress={() => setFilter(f.id)}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.filterTabText, filter === f.id && styles.filterTabTextActive]}>
-                  {f.label}
-                </Text>
-                {count > 0 && (
-                  <View style={[styles.filterTabBadge, filter === f.id && styles.filterTabBadgeActive]}>
-                    <Text style={[styles.filterTabBadgeText, filter === f.id && { color: COLORS.primary }]}>
-                      {count}
-                    </Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+      {/* Filter tabs */}
+      <View style={re.tabsWrap}>
+        <View style={re.tabsRow}>
+          {FILTER_TABS.map((tab, idx) => (
+            <TouchableOpacity
+              key={tab.id}
+              style={re.tab}
+              onLayout={e => {
+                const w = e.nativeEvent.layout.width;
+                setTabWidths(prev => {
+                  const next = [...prev];
+                  next[idx] = w;
+                  return next;
+                });
+              }}
+              onPress={() => {
+                haptic.light();
+                setFilter(tab.id);
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={[re.tabLabel, filter === tab.id && re.tabLabelActive]}>
+                {tab.label}
+              </Text>
+              {counts[tab.id] > 0 && (
+                <View style={[re.tabCount, filter === tab.id && re.tabCountActive]}>
+                  <Text style={[re.tabCountText, filter === tab.id && re.tabCountTextActive]}>
+                    {counts[tab.id]}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          ))}
+        </View>
+        {/* Sliding indicator */}
+        <View style={re.indicatorTrack}>
+          <Animated.View style={[re.indicator, indicatorAnim]} />
+        </View>
       </View>
 
-      {/* Recipe List */}
+      {/* Recipe list */}
       <FlatList
-        data={filteredRecipes}
-        keyExtractor={(item, idx) => `${item.id}-${idx}`}
-        contentContainerStyle={styles.recipeListContent}
+        data={visible}
+        keyExtractor={(item, i) => `${item.id}-${i}`}
+        contentContainerStyle={re.listContent}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <EmptyState
             icon="search-outline"
             title="No recipes found"
             subtitle="Try a different filter"
-            actionText="Show All"
-            onAction={() => setFilter("all")}
+            action="Show all"
+            onAction={() => setFilter('all')}
           />
         }
-        renderItem={({ item }) => (
-          <FullRecipeCard
-            recipe={item}
-            onPress={() => navigation.navigate("RecipeDetail", { recipe: item, userIngredients: ingredients })}
-            onFavorite={toggleFavorite}
-            isFavorited={isFavorited(item)}
-          />
+        renderItem={({ item, index }) => (
+          <StaggerItem index={index}>
+            <RecipeCard
+              recipe={item}
+              onPress={() => {
+                haptic.light();
+                navigation.navigate('RecipeDetail', { recipe: item, userIngredients: ingredients });
+              }}
+              onFavorite={toggleFav}
+              isFavorited={isFaved(item)}
+            />
+          </StaggerItem>
         )}
       />
-    </SafeAreaViewEdges>
+    </View>
   );
 }
 
-// ─── KitchenTab ───────────────────────────────────────────────────────────────
+// ─── KitchenScreen ────────────────────────────────────────────────────────────
 
-function KitchenTab({ navigation }) {
+function KitchenScreen({ navigation }) {
   const [ingredients, setIngredients] = useState([]);
   const [recipesCount, setRecipesCount] = useState(0);
-  const [readyCount, setReadyCount] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [editingIndex, setEditingIndex] = useState(null);
-  const [editName, setEditName] = useState("");
-  const [editQuantity, setEditQuantity] = useState("");
-  const [newName, setNewName] = useState("");
-  const [newQuantity, setNewQuantity] = useState("");
+  const [readyCount, setReadyCount]     = useState(0);
+  const [loading, setLoading]           = useState(true);
+  const [showAdd, setShowAdd]           = useState(false);
+  const [editIdx, setEditIdx]           = useState(null);
+  const [editName, setEditName]         = useState('');
+  const [editQty, setEditQty]           = useState('');
+  const [newName, setNewName]           = useState('');
+  const [newQty, setNewQty]             = useState('');
 
+  useEffect(() => { load(); }, []);
   useEffect(() => {
-    loadData();
-    const unsub = navigation.addListener("focus", loadData);
+    const unsub = navigation.addListener('focus', load);
     return unsub;
   }, [navigation]);
 
-  const loadData = async () => {
+  async function load() {
     try {
-      const [savedIngredients, savedRecipes] = await Promise.all([
-        AsyncStorage.getItem(INGREDIENTS_STORAGE),
-        AsyncStorage.getItem(RECIPES_STORAGE),
+      const [i, r] = await Promise.all([
+        AsyncStorage.getItem(KEYS.ingredients),
+        AsyncStorage.getItem(KEYS.recipes),
       ]);
-      if (savedIngredients) setIngredients(JSON.parse(savedIngredients));
-      if (savedRecipes) {
-        const parsed = JSON.parse(savedRecipes);
-        const recs = parsed.recipes || [];
+      if (i) setIngredients(JSON.parse(i));
+      if (r) {
+        const p = JSON.parse(r);
+        const recs = p.recipes || [];
         setRecipesCount(recs.length);
-        setReadyCount(recs.filter((r) => r.missing_count === 0).length);
+        setReadyCount(recs.filter(x => x.missing_count === 0).length);
       }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  };
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
+  }
 
-  const saveIngredients = async (updated) => {
+  async function save(updated) {
     setIngredients(updated);
-    await AsyncStorage.setItem(INGREDIENTS_STORAGE, JSON.stringify(updated));
-  };
+    await AsyncStorage.setItem(KEYS.ingredients, JSON.stringify(updated));
+  }
 
-  const deleteIngredient = (index) => {
-    Alert.alert("Remove", "Remove this ingredient?", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Remove", style: "destructive", onPress: () => saveIngredients(ingredients.filter((_, i) => i !== index)) },
+  function deleteIng(idx) {
+    Alert.alert('Remove', 'Remove this ingredient?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: () => { haptic.medium(); save(ingredients.filter((_, i) => i !== idx)); setEditIdx(null); } },
     ]);
-  };
+  }
 
-  const startEdit = (index) => {
-    setEditingIndex(index);
-    setEditName(ingredients[index].name);
-    setEditQuantity(ingredients[index].quantity || "");
-  };
+  function openEdit(idx) {
+    haptic.light();
+    setEditIdx(idx);
+    setEditName(ingredients[idx].name);
+    setEditQty(ingredients[idx].quantity || '');
+  }
 
-  const saveEdit = () => {
+  function saveEdit() {
     if (!editName.trim()) return;
-    const updated = [...ingredients];
-    updated[editingIndex] = { name: editName.trim(), quantity: editQuantity.trim() };
-    saveIngredients(updated);
-    setEditingIndex(null);
-  };
+    const upd = [...ingredients];
+    upd[editIdx] = { name: editName.trim(), quantity: editQty.trim() };
+    save(upd);
+    setEditIdx(null);
+    haptic.success();
+  }
 
-  const addIngredient = () => {
+  function addIng() {
     if (!newName.trim()) return;
-    saveIngredients([...ingredients, { name: newName.trim(), quantity: newQuantity.trim() }]);
-    setNewName("");
-    setNewQuantity("");
-    setShowAddModal(false);
-  };
+    save([...ingredients, { name: newName.trim(), quantity: newQty.trim() }]);
+    setNewName(''); setNewQty(''); setShowAdd(false);
+    haptic.success();
+  }
 
-  // Group ingredients by category
+  // Group by category
   const grouped = {};
   ingredients.forEach((ing, idx) => {
     const cat = getIngredientCategory(ing.name);
     if (!grouped[cat]) grouped[cat] = [];
     grouped[cat].push({ ...ing, idx });
   });
-
-  const categoryOrder = ["Proteins", "Dairy", "Vegetables", "Fruits", "Grains", "Condiments", "Other"];
-  const sortedCategories = categoryOrder.filter((c) => grouped[c]);
-
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.lightContainer}>
-        <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 100 }} />
-      </SafeAreaView>
-    );
-  }
+  const CAT_ORDER = ['Proteins', 'Dairy', 'Vegetables', 'Fruits', 'Grains', 'Condiments', 'Other'];
+  const cats = CAT_ORDER.filter(c => grouped[c]);
 
   return (
-    <SafeAreaView style={styles.lightContainer}>
+    <View style={ki.root}>
       <StatusBar style="dark" />
+      <View style={ki.safeTop} />
 
-      <View style={styles.kitchenHeader}>
-        <Text style={styles.kitchenHeaderTitle}>My Kitchen</Text>
-        <TouchableOpacity style={styles.kitchenEditBtn} onPress={() => setShowAddModal(true)}>
-          <Text style={styles.kitchenEditBtnText}>+ Add</Text>
-        </TouchableOpacity>
+      <View style={ki.header}>
+        <Text style={ki.title}>My Kitchen</Text>
+        <Press onPress={() => { haptic.light(); setShowAdd(true); }} scale={0.92}>
+          <View style={ki.addBtn}>
+            <Ionicons name="add" size={20} color="#fff" />
+          </View>
+        </Press>
       </View>
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        {/* Smart Summary */}
-        {recipesCount > 0 && (
-          <TouchableOpacity
-            style={styles.kitchenSummaryCard}
+      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
+
+        {/* Summary card */}
+        {loading ? (
+          <View style={{ marginHorizontal: S[6], marginBottom: S[6] }}>
+            <Skeleton width="100%" height={88} radius={R.xl} />
+          </View>
+        ) : recipesCount > 0 && (
+          <Press
             onPress={async () => {
-              const saved = await AsyncStorage.getItem(RECIPES_STORAGE);
-              const savedIng = await AsyncStorage.getItem(INGREDIENTS_STORAGE);
-              if (saved) {
-                const parsed = JSON.parse(saved);
-                const ing = savedIng ? JSON.parse(savedIng) : [];
-                navigation.navigate("Results", { recipes: parsed.recipes || [], ingredients: ing });
+              haptic.light();
+              const s = await AsyncStorage.getItem(KEYS.recipes);
+              const si = await AsyncStorage.getItem(KEYS.ingredients);
+              if (s) {
+                const p = JSON.parse(s);
+                navigation.navigate('Results', { recipes: p.recipes || [], ingredients: si ? JSON.parse(si) : [] });
               }
             }}
-            activeOpacity={0.88}
+            style={{ marginHorizontal: S[6], marginBottom: S[6] }}
           >
-            <View style={styles.kitchenSummaryLeft}>
-              <Text style={styles.kitchenSummaryNumber}>{recipesCount}</Text>
-              <View>
-                <Text style={styles.kitchenSummaryTitle}>recipes available</Text>
-                {readyCount > 0 && (
-                  <Text style={styles.kitchenSummarySubtitle}>
-                    {readyCount} with all ingredients
-                  </Text>
-                )}
+            <LinearGradient
+              colors={[C.brandMid, C.brand]}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 0.8 }}
+              style={ki.summaryCard}
+            >
+              <View style={ki.summaryLeft}>
+                <Text style={ki.summaryNumber}>{recipesCount}</Text>
+                <View>
+                  <Text style={ki.summaryLabel}>recipes available</Text>
+                  {readyCount > 0 && (
+                    <Text style={ki.summarySub}>{readyCount} with all ingredients</Text>
+                  )}
+                </View>
               </View>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={COLORS.primary} />
-          </TouchableOpacity>
+              <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.6)" />
+            </LinearGradient>
+          </Press>
         )}
 
-        {/* Ingredients by Category */}
-        {ingredients.length === 0 ? (
-          <EmptyState
-            icon="nutrition-outline"
-            title="Your pantry is empty"
-            subtitle="Scan your fridge or add items manually"
-            actionText="Scan Fridge"
-            onAction={() => navigation.navigate("ScanTab")}
-          />
-        ) : (
-          <View style={styles.kitchenCategories}>
-            {sortedCategories.map((cat) => (
-              <View key={cat} style={styles.kitchenCategorySection}>
-                <Text style={styles.kitchenCategoryLabel}>{cat}</Text>
-                <View style={styles.kitchenChipRow}>
-                  {grouped[cat].map(({ name, quantity, idx }) => (
-                    <TouchableOpacity
-                      key={idx}
-                      style={styles.kitchenChip}
-                      onPress={() => startEdit(idx)}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={styles.kitchenChipText}>{name}</Text>
-                      {quantity ? (
-                        <Text style={styles.kitchenChipQty}> · {quantity}</Text>
-                      ) : null}
-                    </TouchableOpacity>
-                  ))}
+        {/* Ingredients */}
+        {loading ? (
+          <View style={{ paddingHorizontal: S[6], gap: S[4] }}>
+            {['Proteins', 'Vegetables'].map(c => (
+              <View key={c}>
+                <Skeleton width={80} height={14} radius={4} style={{ marginBottom: S[3] }} />
+                <View style={{ flexDirection: 'row', gap: S[2], flexWrap: 'wrap' }}>
+                  {[1,2,3].map(i => <Skeleton key={i} width={80 + i * 20} height={36} radius={R.full} />)}
                 </View>
               </View>
             ))}
           </View>
+        ) : ingredients.length === 0 ? (
+          <EmptyState
+            icon="nutrition-outline"
+            title="Your pantry is empty"
+            subtitle="Scan your fridge or add items manually to get started."
+            action="Scan Fridge"
+            onAction={() => navigation.navigate('ScanTab')}
+          />
+        ) : (
+          <View style={ki.categories}>
+            {cats.map((cat, ci) => {
+              const meta = getCategoryMeta(cat);
+              return (
+                <StaggerItem key={cat} index={ci}>
+                  <View style={ki.catSection}>
+                    <View style={ki.catLabelRow}>
+                      <Text style={ki.catEmoji}>{meta.emoji}</Text>
+                      <Text style={ki.catLabel}>{cat}</Text>
+                    </View>
+                    <View style={ki.chipRow}>
+                      {grouped[cat].map(({ name, quantity, idx }) => (
+                        <Press key={idx} onPress={() => openEdit(idx)} scale={0.94} hapticType="light">
+                          <View style={ki.chip}>
+                            <Text style={ki.chipText}>{capitalize(name)}</Text>
+                            {quantity ? <Text style={ki.chipQty}> · {quantity}</Text> : null}
+                          </View>
+                        </Press>
+                      ))}
+                    </View>
+                  </View>
+                </StaggerItem>
+              );
+            })}
+          </View>
         )}
 
-        <TouchableOpacity
-          style={styles.kitchenAddBtn}
-          onPress={() => setShowAddModal(true)}
-          activeOpacity={0.85}
-        >
-          <Ionicons name="add-circle-outline" size={20} color={COLORS.primary} />
-          <Text style={styles.kitchenAddBtnText}>Add ingredient</Text>
+        <TouchableOpacity style={ki.addRow} onPress={() => { haptic.light(); setShowAdd(true); }}>
+          <Ionicons name="add-circle-outline" size={18} color={C.brand} />
+          <Text style={ki.addRowText}>Add ingredient</Text>
         </TouchableOpacity>
-
-        <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* Edit Modal */}
-      <Modal visible={editingIndex !== null} transparent animationType="fade">
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Edit Ingredient</Text>
-            <TextInput style={styles.modalInput} placeholder="Name" value={editName} onChangeText={setEditName} />
-            <TextInput style={styles.modalInput} placeholder="Quantity (optional)" value={editQuantity} onChangeText={setEditQuantity} />
-            <View style={styles.modalButtons}>
-              <TouchableOpacity style={styles.modalDestructiveBtn} onPress={() => { deleteIngredient(editingIndex); setEditingIndex(null); }}>
-                <Text style={styles.modalDestructiveBtnText}>Remove</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setEditingIndex(null)}>
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.modalSaveBtn} onPress={saveEdit}>
-                <Text style={styles.modalSaveText}>Save</Text>
-              </TouchableOpacity>
+      {/* Edit modal */}
+      <Modal visible={editIdx !== null} transparent animationType="fade">
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={ui.modalOverlay}>
+          <View style={ui.modalSheet}>
+            <View style={ui.modalDragHandle} />
+            <Text style={ui.modalTitle}>Edit ingredient</Text>
+            <TextInput style={ui.input} placeholder="Name" value={editName} onChangeText={setEditName} />
+            <TextInput style={ui.input} placeholder="Quantity (optional)" value={editQty} onChangeText={setEditQty} />
+            <View style={ui.modalBtnRow}>
+              <Press onPress={() => deleteIng(editIdx)} style={{ flex: 1 }}>
+                <View style={ui.btnDanger}><Text style={ui.btnDangerText}>Remove</Text></View>
+              </Press>
+              <Press onPress={() => setEditIdx(null)} style={{ flex: 1 }}>
+                <View style={ui.btnSecondary}><Text style={ui.btnSecondaryText}>Cancel</Text></View>
+              </Press>
+              <Press onPress={saveEdit} style={{ flex: 1 }} hapticType="medium">
+                <View style={ui.btnPrimary}><Text style={ui.btnPrimaryText}>Save</Text></View>
+              </Press>
             </View>
           </View>
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* Add Modal */}
-      <Modal visible={showAddModal} transparent animationType="fade">
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Add Ingredient</Text>
-            <TextInput style={styles.modalInput} placeholder="Name" value={newName} onChangeText={setNewName} autoFocus />
-            <TextInput style={styles.modalInput} placeholder="Quantity (optional)" value={newQuantity} onChangeText={setNewQuantity} />
-            <View style={styles.modalButtons}>
-              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setShowAddModal(false)}>
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.modalSaveBtn} onPress={addIngredient}>
-                <Text style={styles.modalSaveText}>Add</Text>
-              </TouchableOpacity>
+      {/* Add modal */}
+      <Modal visible={showAdd} transparent animationType="fade">
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={ui.modalOverlay}>
+          <View style={ui.modalSheet}>
+            <View style={ui.modalDragHandle} />
+            <Text style={ui.modalTitle}>Add ingredient</Text>
+            <TextInput style={ui.input} placeholder="Name" value={newName} onChangeText={setNewName} autoFocus />
+            <TextInput style={ui.input} placeholder="Quantity (optional)" value={newQty} onChangeText={setNewQty} />
+            <View style={ui.modalBtnRow}>
+              <Press onPress={() => setShowAdd(false)} style={{ flex: 1 }}>
+                <View style={ui.btnSecondary}><Text style={ui.btnSecondaryText}>Cancel</Text></View>
+              </Press>
+              <Press onPress={addIng} style={{ flex: 2 }} hapticType="medium">
+                <View style={[ui.btnPrimary, !newName.trim() && { opacity: 0.45 }]}>
+                  <Text style={ui.btnPrimaryText}>Add</Text>
+                </View>
+              </Press>
             </View>
           </View>
         </KeyboardAvoidingView>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
-// ─── SavedTab ─────────────────────────────────────────────────────────────────
+// ─── SavedScreen ──────────────────────────────────────────────────────────────
 
-function SavedTab({ navigation }) {
-  const [favorites, setFavorites] = useState([]);
+function SavedScreen({ navigation }) {
+  const [favorites, setFavorites]   = useState([]);
   const [shoppingList, setShoppingList] = useState([]);
-  const [history, setHistory] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [showShoppingInput, setShowShoppingInput] = useState(false);
-  const [newItem, setNewItem] = useState("");
+  const [history, setHistory]       = useState([]);
+  const [loading, setLoading]       = useState(true);
+  const [showInput, setShowInput]   = useState(false);
+  const [newItem, setNewItem]       = useState('');
 
+  useEffect(() => { loadAll(); }, []);
   useEffect(() => {
-    loadData();
-    const unsub = navigation.addListener("focus", loadData);
+    const unsub = navigation.addListener('focus', loadAll);
     return unsub;
   }, [navigation]);
 
-  const loadData = async () => {
+  async function loadAll() {
     try {
-      const [savedFav, savedList, savedHistory] = await Promise.all([
-        AsyncStorage.getItem(FAVORITES_STORAGE),
-        AsyncStorage.getItem(SHOPPING_LIST_STORAGE),
-        AsyncStorage.getItem(HISTORY_STORAGE),
+      const [f, s, h] = await Promise.all([
+        AsyncStorage.getItem(KEYS.favorites),
+        AsyncStorage.getItem(KEYS.shopping),
+        AsyncStorage.getItem(KEYS.history),
       ]);
-      if (savedFav) setFavorites(JSON.parse(savedFav));
-      if (savedList) setShoppingList(JSON.parse(savedList));
-      if (savedHistory) setHistory(JSON.parse(savedHistory).slice(0, 5));
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  };
+      if (f) setFavorites(JSON.parse(f));
+      if (s) setShoppingList(JSON.parse(s));
+      if (h) setHistory(JSON.parse(h).slice(0, 5));
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
+  }
 
-  const saveList = async (list) => {
+  async function saveList(list) {
     setShoppingList(list);
-    await AsyncStorage.setItem(SHOPPING_LIST_STORAGE, JSON.stringify(list));
-  };
+    await AsyncStorage.setItem(KEYS.shopping, JSON.stringify(list));
+  }
 
-  const toggleItem = (index) => {
-    const updated = [...shoppingList];
-    updated[index] = { ...updated[index], checked: !updated[index].checked };
-    saveList(updated);
-  };
+  function toggleItem(i) {
+    haptic.light();
+    const upd = [...shoppingList];
+    upd[i] = { ...upd[i], checked: !upd[i].checked };
+    saveList(upd);
+  }
 
-  const removeItem = (index) => saveList(shoppingList.filter((_, i) => i !== index));
-
-  const clearChecked = () => saveList(shoppingList.filter((item) => !item.checked));
-
-  const addItem = () => {
+  function addItem() {
     if (!newItem.trim()) return;
     saveList([...shoppingList, { name: newItem.trim(), checked: false }]);
-    setNewItem("");
-    setShowShoppingInput(false);
-  };
+    setNewItem(''); setShowInput(false);
+    haptic.success();
+  }
 
-  const shareList = async () => {
-    const unchecked = shoppingList.filter((i) => !i.checked);
-    if (unchecked.length === 0) { Alert.alert("Empty", "No items to share."); return; }
-    await Share.share({ message: `Shopping List\n\n${unchecked.map((i) => `☐ ${i.name}${i.recipeName ? ` (${i.recipeName})` : ""}`).join("\n")}` });
-  };
+  async function removeFav(recipe) {
+    haptic.light();
+    const upd = favorites.filter(f => f.id !== recipe.id);
+    setFavorites(upd);
+    await AsyncStorage.setItem(KEYS.favorites, JSON.stringify(upd));
+  }
 
-  const removeFavorite = async (recipe) => {
-    const updated = favorites.filter((f) => f.id !== recipe.id);
-    setFavorites(updated);
-    await AsyncStorage.setItem(FAVORITES_STORAGE, JSON.stringify(updated));
-  };
+  const uncheckedCount = shoppingList.filter(i => !i.checked).length;
 
-  const checkedCount = shoppingList.filter((i) => i.checked).length;
-  const uncheckedCount = shoppingList.length - checkedCount;
-
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.lightContainer}>
-        <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 100 }} />
-      </SafeAreaView>
-    );
+  async function shareList() {
+    const items = shoppingList.filter(i => !i.checked);
+    if (!items.length) { Alert.alert('Empty', 'No items to share.'); return; }
+    await Share.share({
+      message: `Shopping List\n\n${items.map(i => `☐ ${i.name}${i.recipeName ? ` (${i.recipeName})` : ''}`).join('\n')}`,
+    });
   }
 
   return (
-    <SafeAreaView style={styles.lightContainer}>
+    <View style={sv.root}>
       <StatusBar style="dark" />
+      <View style={sv.safeTop} />
 
-      <View style={styles.savedHeader}>
-        <Text style={styles.savedHeaderTitle}>Saved</Text>
+      <View style={sv.header}>
+        <Text style={sv.title}>Saved</Text>
       </View>
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
 
-        {/* Shopping List Section */}
-        <View style={styles.savedSection}>
-          <View style={styles.savedSectionHeader}>
-            <View style={styles.savedSectionTitleRow}>
-              <Ionicons name="cart-outline" size={18} color={COLORS.primary} />
-              <Text style={styles.savedSectionTitle}>Shopping List</Text>
+        {/* Shopping List */}
+        <View style={sv.section}>
+          <View style={sv.sectionHeader}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: S[2] }}>
+              <Text style={sv.sectionTitle}>Shopping List</Text>
               {uncheckedCount > 0 && (
-                <View style={styles.savedBadge}>
-                  <Text style={styles.savedBadgeText}>{uncheckedCount}</Text>
+                <View style={sv.badge}>
+                  <Text style={sv.badgeText}>{uncheckedCount}</Text>
                 </View>
               )}
             </View>
-            <View style={{ flexDirection: "row", gap: 8 }}>
+            <View style={{ flexDirection: 'row', gap: S[3] }}>
               {shoppingList.length > 0 && (
                 <TouchableOpacity onPress={shareList}>
-                  <Ionicons name="share-outline" size={20} color={COLORS.textSecondary} />
+                  <Ionicons name="share-outline" size={20} color={C.ink400} />
                 </TouchableOpacity>
               )}
-              <TouchableOpacity onPress={() => setShowShoppingInput(!showShoppingInput)}>
-                <Ionicons name="add" size={22} color={COLORS.primary} />
+              <TouchableOpacity onPress={() => { haptic.light(); setShowInput(v => !v); }}>
+                <Ionicons name={showInput ? 'close' : 'add'} size={22} color={C.brand} />
               </TouchableOpacity>
             </View>
           </View>
 
-          {showShoppingInput && (
-            <View style={styles.shoppingAddRow}>
+          {showInput && (
+            <View style={sv.addRow}>
               <TextInput
-                style={styles.shoppingAddInput}
-                placeholder="Add item..."
-                placeholderTextColor={COLORS.textLight}
+                style={sv.addInput}
+                placeholder="Add item…"
+                placeholderTextColor={C.ink300}
                 value={newItem}
                 onChangeText={setNewItem}
                 onSubmitEditing={addItem}
                 returnKeyType="done"
                 autoFocus
               />
-              <TouchableOpacity style={styles.shoppingAddBtn} onPress={addItem}>
-                <Text style={styles.shoppingAddBtnText}>Add</Text>
-              </TouchableOpacity>
+              <Press onPress={addItem} hapticType="medium">
+                <View style={sv.addBtn}><Text style={sv.addBtnText}>Add</Text></View>
+              </Press>
             </View>
           )}
 
-          {shoppingList.length === 0 ? (
-            <Text style={styles.savedEmptyNote}>
-              Add items here or save missing ingredients from a recipe.
+          {loading ? (
+            <View style={{ gap: S[2] }}>
+              {[1,2,3].map(i => <Skeleton key={i} width="100%" height={52} radius={R.lg} />)}
+            </View>
+          ) : shoppingList.length === 0 ? (
+            <Text style={sv.emptyNote}>
+              Add items here, or save missing ingredients directly from any recipe.
             </Text>
           ) : (
-            <View style={styles.shoppingListWrap}>
-              {shoppingList.map((item, index) => (
+            <View style={{ gap: S[2] }}>
+              {shoppingList.map((item, idx) => (
                 <TouchableOpacity
-                  key={index}
-                  style={[styles.shoppingItem, item.checked && styles.shoppingItemChecked]}
-                  onPress={() => toggleItem(index)}
-                  activeOpacity={0.8}
+                  key={idx}
+                  style={[sv.shoppingItem, item.checked && sv.shoppingItemDone]}
+                  onPress={() => toggleItem(idx)}
+                  activeOpacity={0.85}
                 >
-                  <View style={[styles.shoppingCheckbox, item.checked && styles.shoppingCheckboxChecked]}>
-                    {item.checked && <Ionicons name="checkmark" size={14} color="#fff" />}
+                  <View style={[sv.checkbox, item.checked && sv.checkboxDone]}>
+                    {item.checked && <Ionicons name="checkmark" size={13} color="#fff" />}
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.shoppingItemName, item.checked && styles.shoppingItemNameChecked]}>
-                      {item.name}
-                    </Text>
+                    <Text style={[sv.itemName, item.checked && sv.itemNameDone]}>{item.name}</Text>
                     {item.recipeName && (
-                      <Text style={styles.shoppingItemRecipe}>{item.recipeName}</Text>
+                      <Text style={sv.itemRecipe}>{item.recipeName}</Text>
                     )}
                   </View>
-                  <TouchableOpacity onPress={() => removeItem(index)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                    <Ionicons name="close" size={18} color={COLORS.textLight} />
+                  <TouchableOpacity
+                    onPress={() => { haptic.light(); saveList(shoppingList.filter((_, i) => i !== idx)); }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons name="close" size={16} color={C.ink300} />
                   </TouchableOpacity>
                 </TouchableOpacity>
               ))}
-              {checkedCount > 0 && (
-                <TouchableOpacity style={styles.clearCheckedBtn} onPress={clearChecked}>
-                  <Ionicons name="trash-outline" size={16} color={COLORS.error} />
-                  <Text style={styles.clearCheckedText}>Clear {checkedCount} checked</Text>
+
+              {shoppingList.filter(i => i.checked).length > 0 && (
+                <TouchableOpacity
+                  style={sv.clearBtn}
+                  onPress={() => { haptic.light(); saveList(shoppingList.filter(i => !i.checked)); }}
+                >
+                  <Ionicons name="trash-outline" size={14} color={C.rose} />
+                  <Text style={sv.clearText}>
+                    Clear {shoppingList.filter(i => i.checked).length} checked
+                  </Text>
                 </TouchableOpacity>
               )}
             </View>
           )}
         </View>
 
-        {/* Saved Recipes Section */}
-        <View style={styles.savedSection}>
-          <View style={styles.savedSectionHeader}>
-            <View style={styles.savedSectionTitleRow}>
-              <Ionicons name="heart-outline" size={18} color={COLORS.error} />
-              <Text style={styles.savedSectionTitle}>Saved Recipes</Text>
+        {/* Saved Recipes */}
+        <View style={sv.section}>
+          <View style={sv.sectionHeader}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: S[2] }}>
+              <Text style={sv.sectionTitle}>Saved Recipes</Text>
               {favorites.length > 0 && (
-                <View style={[styles.savedBadge, { backgroundColor: COLORS.error + "15" }]}>
-                  <Text style={[styles.savedBadgeText, { color: COLORS.error }]}>{favorites.length}</Text>
+                <View style={[sv.badge, { backgroundColor: C.roseBg }]}>
+                  <Text style={[sv.badgeText, { color: C.rose }]}>{favorites.length}</Text>
                 </View>
               )}
             </View>
           </View>
 
-          {favorites.length === 0 ? (
-            <Text style={styles.savedEmptyNote}>
-              Tap the heart on any recipe to save it here.
+          {loading ? (
+            <View style={sv.grid}>
+              {[1,2,3,4].map(i => <Skeleton key={i} width={(W - S[6]*2 - S[3]) / 2} height={160} radius={R.xl} />)}
+            </View>
+          ) : favorites.length === 0 ? (
+            <Text style={sv.emptyNote}>
+              Tap the heart on any recipe to save it to your collection.
             </Text>
           ) : (
-            <View style={styles.favoritesGrid}>
-              {favorites.map((recipe, index) => (
-                <GridRecipeCard
-                  key={`${recipe.id}-${index}`}
-                  recipe={recipe}
-                  onPress={() => navigation.navigate("RecipeDetail", { recipe })}
-                />
+            <View style={sv.grid}>
+              {favorites.map((rec, i) => (
+                <StaggerItem key={`${rec.id}-${i}`} index={i}>
+                  <GridCard
+                    recipe={rec}
+                    onPress={() => { haptic.light(); navigation.navigate('RecipeDetail', { recipe: rec }); }}
+                  />
+                </StaggerItem>
               ))}
             </View>
           )}
         </View>
 
-        {/* Scan History Section */}
+        {/* Scan History */}
         {history.length > 0 && (
-          <View style={styles.savedSection}>
-            <View style={styles.savedSectionHeader}>
-              <View style={styles.savedSectionTitleRow}>
-                <Ionicons name="time-outline" size={18} color={COLORS.textSecondary} />
-                <Text style={styles.savedSectionTitle}>Scan History</Text>
-              </View>
+          <View style={sv.section}>
+            <View style={sv.sectionHeader}>
+              <Text style={sv.sectionTitle}>Scan History</Text>
             </View>
-            {history.map((entry) => (
-              <View key={entry.id} style={styles.historyItem}>
-                <View style={styles.historyItemLeft}>
-                  <Text style={styles.historyItemDate}>{formatScanDate(entry.date)}</Text>
-                  <Text style={styles.historyItemCount}>
-                    {entry.ingredients?.length || 0} ingredients
-                  </Text>
+            {history.map(entry => (
+              <View key={entry.id} style={sv.historyItem}>
+                <View style={sv.historyDot} />
+                <View style={{ flex: 1 }}>
+                  <Text style={sv.historyDate}>{formatScanDate(entry.date)}</Text>
+                  <Text style={sv.historySub}>{pluralize(entry.ingredients?.length || 0, 'ingredient')}</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={16} color={COLORS.textLight} />
+                <Ionicons name="chevron-forward" size={14} color={C.ink300} />
               </View>
             ))}
           </View>
         )}
 
-        <View style={{ height: 100 }} />
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -1335,152 +1371,163 @@ function SavedTab({ navigation }) {
 
 function RecipeDetailScreen({ route, navigation }) {
   const { recipe, userIngredients = [] } = route.params;
-  const [isFavorited, setIsFavorited] = useState(false);
+  const [isFaved, setIsFaved] = useState(false);
   const insets = useSafeAreaInsets();
-  const HERO_HEIGHT = SCREEN_HEIGHT * 0.46;
+  const HERO = H * 0.44;
 
-  useEffect(() => { checkFavorite(); }, []);
+  useEffect(() => {
+    AsyncStorage.getItem(KEYS.favorites).then(s => {
+      if (s) setIsFaved(JSON.parse(s).some(f => f.id === recipe.id));
+    });
+  }, []);
 
-  const checkFavorite = async () => {
-    const saved = await AsyncStorage.getItem(FAVORITES_STORAGE);
-    if (saved) setIsFavorited(JSON.parse(saved).some((f) => f.id === recipe.id));
-  };
-
-  const toggleFavorite = async () => {
-    const saved = await AsyncStorage.getItem(FAVORITES_STORAGE);
-    let favs = saved ? JSON.parse(saved) : [];
-    favs = isFavorited
-      ? favs.filter((f) => f.id !== recipe.id)
+  async function toggleFav() {
+    haptic.medium();
+    const s = await AsyncStorage.getItem(KEYS.favorites);
+    let favs = s ? JSON.parse(s) : [];
+    favs = isFaved
+      ? favs.filter(f => f.id !== recipe.id)
       : [{ ...recipe, savedAt: new Date().toISOString() }, ...favs];
-    await AsyncStorage.setItem(FAVORITES_STORAGE, JSON.stringify(favs));
-    setIsFavorited(!isFavorited);
-  };
+    await AsyncStorage.setItem(KEYS.favorites, JSON.stringify(favs));
+    setIsFaved(!isFaved);
+    if (!isFaved) haptic.success();
+  }
 
-  const addMissingToShoppingList = async () => {
+  async function addMissing() {
     const missing = recipe.missing_ingredients || [];
-    if (missing.length === 0) { Alert.alert("All Set!", "You have all the ingredients needed."); return; }
-    const saved = await AsyncStorage.getItem(SHOPPING_LIST_STORAGE);
-    let list = saved ? JSON.parse(saved) : [];
-    const existingNames = list.map((item) => item.name.toLowerCase());
+    if (!missing.length) { Alert.alert('All Set!', 'You have all ingredients.'); return; }
+    const s    = await AsyncStorage.getItem(KEYS.shopping);
+    const list = s ? JSON.parse(s) : [];
+    const existing = list.map(i => i.name.toLowerCase());
     const newItems = missing
-      .filter((item) => !existingNames.includes(item.toLowerCase()))
-      .map((name) => ({ name, checked: false, recipeName: recipe.name }));
-    if (newItems.length === 0) { Alert.alert("Already Added", "All missing ingredients are in your shopping list."); return; }
-    await AsyncStorage.setItem(SHOPPING_LIST_STORAGE, JSON.stringify([...list, ...newItems]));
-    Alert.alert("Added!", `${newItems.length} item${newItems.length !== 1 ? "s" : ""} added to shopping list.`);
-  };
+      .filter(m => !existing.includes(m.toLowerCase()))
+      .map(name => ({ name, checked: false, recipeName: recipe.name }));
+    if (!newItems.length) { Alert.alert('Already Added', 'All missing items are in your list.'); return; }
+    await AsyncStorage.setItem(KEYS.shopping, JSON.stringify([...list, ...newItems]));
+    haptic.success();
+    Alert.alert('Added!', `${pluralize(newItems.length, 'item')} added to your shopping list.`);
+  }
 
-  const openSource = () => {
-    const url = recipe.source || recipe.youtube;
-    if (url) Linking.openURL(url);
-    else Alert.alert("No Source", "No external source available.");
-  };
-
-  const totalCount = (recipe.matched_count || 0) + (recipe.missing_count || 0);
+  const total   = (recipe.matched_count || 0) + (recipe.missing_count || 0);
   const isReady = recipe.missing_count === 0;
+  const hasCook = recipe.steps?.length > 0;
 
   return (
-    <SafeAreaViewEdges style={{ flex: 1, backgroundColor: COLORS.background }} edges={["left", "right", "bottom"]}>
+    <View style={{ flex: 1, backgroundColor: C.bgBase }}>
       <StatusBar style="light" />
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ flexGrow: 1, paddingBottom: 40 }}
+        contentContainerStyle={{ paddingBottom: 40 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Hero Image */}
-        <View style={{ height: HERO_HEIGHT, position: "relative" }}>
+        {/* Hero */}
+        <View style={{ height: HERO, position: 'relative' }}>
           {recipe.image ? (
-            <Image source={{ uri: recipe.image }} style={{ width: "100%", height: "100%", resizeMode: "cover" }} />
+            <Image source={{ uri: recipe.image }} style={{ width: '100%', height: '100%', resizeMode: 'cover' }} />
           ) : (
-            <View style={[{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: COLORS.border }]}>
-              <Text style={{ fontSize: 100 }}>{recipe.emoji || "🍽️"}</Text>
+            <View style={[{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: C.bgSubtle }]}>
+              <Text style={{ fontSize: 90 }}>{recipe.emoji || '🍽️'}</Text>
             </View>
           )}
+          {/* Cinematic gradient */}
           <LinearGradient
-            colors={["rgba(0,0,0,0.5)", "transparent", "rgba(0,0,0,0.35)"]}
-            style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
+            colors={['rgba(0,0,0,0.38)', 'transparent', 'rgba(0,0,0,0.52)']}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
           />
 
-          {/* Nav Buttons */}
-          <View style={[styles.detailNav, { paddingTop: insets.top + SPACING.sm }]}>
-            <TouchableOpacity style={styles.detailNavBtn} onPress={() => navigation.goBack()}>
-              <Ionicons name="arrow-back" size={22} color="#fff" />
-            </TouchableOpacity>
-            <View style={{ flexDirection: "row", gap: 10 }}>
+          {/* Nav */}
+          <View style={[de.nav, { paddingTop: insets.top + S[2] }]}>
+            <Press onPress={() => navigation.goBack()} scale={0.9}>
+              <View style={de.navBtn}>
+                <Ionicons name="arrow-back" size={20} color="#fff" />
+              </View>
+            </Press>
+            <View style={{ flexDirection: 'row', gap: S[2] }}>
               {recipe.youtube && (
-                <TouchableOpacity style={styles.detailNavBtn} onPress={() => Linking.openURL(recipe.youtube)}>
-                  <Ionicons name="logo-youtube" size={22} color="#FF0000" />
-                </TouchableOpacity>
+                <Press onPress={() => Linking.openURL(recipe.youtube)} scale={0.9}>
+                  <View style={de.navBtn}>
+                    <Ionicons name="logo-youtube" size={20} color="#FF3B30" />
+                  </View>
+                </Press>
               )}
-              <TouchableOpacity style={styles.detailNavBtn} onPress={toggleFavorite}>
-                <Ionicons name={isFavorited ? "heart" : "heart-outline"} size={22} color={isFavorited ? COLORS.error : "#fff"} />
-              </TouchableOpacity>
+              <Press onPress={toggleFav} scale={0.9}>
+                <View style={de.navBtn}>
+                  <Ionicons name={isFaved ? 'heart' : 'heart-outline'} size={20} color={isFaved ? '#FF3B30' : '#fff'} />
+                </View>
+              </Press>
             </View>
           </View>
         </View>
 
-        {/* Content Card */}
-        <View style={styles.detailCard}>
-          <Text style={styles.detailTitle}>{recipe.name}</Text>
-
-          {/* Meta row */}
-          <View style={styles.detailMetaRow}>
-            {recipe.area && <View style={styles.detailTag}><Text style={styles.detailTagText}>{recipe.area}</Text></View>}
-            {recipe.category && <View style={styles.detailTag}><Text style={styles.detailTagText}>{recipe.category}</Text></View>}
+        {/* Content card */}
+        <View style={de.card}>
+          {/* Tags */}
+          <View style={de.tagRow}>
+            {recipe.area && <View style={de.tag}><Text style={de.tagText}>{recipe.area}</Text></View>}
+            {recipe.category && <View style={de.tag}><Text style={de.tagText}>{recipe.category}</Text></View>}
           </View>
 
-          {/* Match info */}
+          {/* Title — Playfair Display */}
+          <Text style={de.title}>{recipe.name}</Text>
+
+          {/* Match row */}
           {recipe.match_percent !== undefined && (
-            <View style={styles.detailMatchRow}>
-              <MatchDots matchPercent={recipe.match_percent} />
-              <Text style={styles.detailMatchText}>
+            <View style={de.matchRow}>
+              <MatchDots matchPercent={recipe.match_percent} size={10} />
+              <Text style={de.matchText}>
                 {isReady
-                  ? "You have all ingredients"
-                  : `${recipe.matched_count || 0} of ${totalCount} ingredients`}
+                  ? 'You have all ingredients'
+                  : `${recipe.matched_count || 0} of ${total} ingredients`}
               </Text>
+              {isReady && (
+                <View style={de.readyPill}>
+                  <Text style={de.readyPillText}>Ready</Text>
+                </View>
+              )}
             </View>
           )}
 
-          {/* Missing ingredients */}
-          {recipe.missing_ingredients && recipe.missing_ingredients.length > 0 && (
-            <View style={styles.detailMissingCard}>
-              <View style={styles.detailMissingHeader}>
-                <Ionicons name="cart-outline" size={16} color={COLORS.warning} />
-                <Text style={styles.detailMissingTitle}>Missing ingredients</Text>
+          {/* Missing ingredients inline */}
+          {recipe.missing_ingredients?.length > 0 && (
+            <View style={de.missingCard}>
+              <View style={de.missingHeader}>
+                <Ionicons name="cart-outline" size={15} color={C.amber} />
+                <Text style={de.missingTitle}>You're missing</Text>
               </View>
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
-                {recipe.missing_ingredients.map((ing, i) => (
-                  <View key={i} style={styles.missingChip}>
-                    <Text style={styles.missingChipText}>{ing}</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: S[2], marginBottom: S[3] }}>
+                {recipe.missing_ingredients.map((m, i) => (
+                  <View key={i} style={de.missingPill}>
+                    <Text style={de.missingPillText}>{m}</Text>
                   </View>
                 ))}
               </View>
-              <TouchableOpacity style={styles.addToListInlineBtn} onPress={addMissingToShoppingList}>
-                <Ionicons name="add-circle-outline" size={16} color={COLORS.primary} />
-                <Text style={styles.addToListInlineText}>Add to shopping list</Text>
+              <TouchableOpacity style={de.addToListBtn} onPress={addMissing}>
+                <Ionicons name="add-circle-outline" size={15} color={C.brand} />
+                <Text style={de.addToListText}>Add to shopping list</Text>
               </TouchableOpacity>
             </View>
           )}
 
-          {/* All Ingredients */}
-          {recipe.ingredients && recipe.ingredients.length > 0 && (
-            <View style={styles.detailSection}>
-              <Text style={styles.detailSectionTitle}>Ingredients</Text>
+          {/* Ingredients list */}
+          {recipe.ingredients?.length > 0 && (
+            <View style={de.section}>
+              <Text style={de.sectionTitle}>Ingredients</Text>
               {recipe.ingredients.map((ing, i) => {
-                const have = recipe.matched_ingredients?.some(
-                  (m) => m.toLowerCase().includes(ing.name.toLowerCase()) || ing.name.toLowerCase().includes(m.toLowerCase())
+                const have = recipe.matched_ingredients?.some(m =>
+                  m.toLowerCase().includes(ing.name.toLowerCase()) ||
+                  ing.name.toLowerCase().includes(m.toLowerCase())
                 );
                 return (
-                  <View key={i} style={styles.detailIngredientRow}>
-                    <Ionicons
-                      name={have ? "checkmark-circle" : "close-circle-outline"}
-                      size={16}
-                      color={have ? COLORS.matchReady : COLORS.matchMissing}
-                    />
-                    <Text style={styles.detailIngredientMeasure}>{ing.measure}</Text>
-                    <Text style={[styles.detailIngredientName, !have && { color: COLORS.textSecondary }]}>
-                      {ing.name}
-                    </Text>
+                  <View key={i} style={[de.ingRow, i < recipe.ingredients.length - 1 && de.ingRowBorder]}>
+                    <View style={[de.ingStatus, { backgroundColor: have ? C.emeraldBg : C.bgSubtle }]}>
+                      <Ionicons
+                        name={have ? 'checkmark' : 'close'}
+                        size={12}
+                        color={have ? C.emerald : C.ink300}
+                      />
+                    </View>
+                    <Text style={de.ingMeasure}>{ing.measure}</Text>
+                    <Text style={[de.ingName, !have && { color: C.ink400 }]}>{ing.name}</Text>
                   </View>
                 );
               })}
@@ -1488,66 +1535,59 @@ function RecipeDetailScreen({ route, navigation }) {
           )}
 
           {/* Instructions */}
-          {recipe.steps && recipe.steps.length > 0 && (
-            <View style={styles.detailSection}>
-              <Text style={styles.detailSectionTitle}>Instructions</Text>
+          {recipe.steps?.length > 0 && (
+            <View style={de.section}>
+              <Text style={de.sectionTitle}>Instructions</Text>
               {recipe.steps.map((step, i) => (
-                <View key={i} style={styles.detailStepRow}>
-                  <View style={styles.detailStepNum}>
-                    <Text style={styles.detailStepNumText}>{i + 1}</Text>
+                <View key={i} style={de.stepRow}>
+                  <View style={de.stepNum}>
+                    <Text style={de.stepNumText}>{i + 1}</Text>
                   </View>
-                  <Text style={styles.detailStepText}>{step}</Text>
+                  <Text style={de.stepText}>{step}</Text>
                 </View>
               ))}
             </View>
           )}
 
-          {/* Action Buttons */}
-          <View style={styles.detailActions}>
-            {recipe.steps && recipe.steps.length > 0 && (
-              <TouchableOpacity
-                style={styles.startCookingBtn}
-                onPress={() => navigation.navigate("CookMode", { recipe })}
-                activeOpacity={0.88}
+          {/* CTAs */}
+          <View style={de.actions}>
+            {hasCook && (
+              <Press
+                onPress={() => { haptic.medium(); navigation.navigate('CookMode', { recipe }); }}
+                hapticType="medium"
               >
                 <LinearGradient
-                  colors={[COLORS.primary, "#2D6644"]}
-                  style={styles.startCookingBtnGradient}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
+                  colors={[C.brandMid, C.brand]}
+                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                  style={de.cookBtn}
                 >
                   <Ionicons name="flame-outline" size={20} color="#fff" />
-                  <Text style={styles.startCookingBtnText}>Start Cooking</Text>
-                  <Ionicons name="arrow-forward" size={18} color="rgba(255,255,255,0.7)" />
+                  <Text style={de.cookBtnText}>Start Cooking</Text>
+                  <Ionicons name="arrow-forward" size={17} color="rgba(255,255,255,0.6)" />
                 </LinearGradient>
-              </TouchableOpacity>
+              </Press>
             )}
 
-            <View style={styles.detailSecondaryActions}>
-              <TouchableOpacity
-                style={[styles.detailSecondaryBtn, { flex: 1 }]}
-                onPress={toggleFavorite}
-              >
-                <Ionicons name={isFavorited ? "heart" : "heart-outline"} size={18} color={isFavorited ? COLORS.error : COLORS.primary} />
-                <Text style={styles.detailSecondaryBtnText}>
-                  {isFavorited ? "Saved" : "Save"}
-                </Text>
-              </TouchableOpacity>
-
+            <View style={de.secActions}>
+              <Press onPress={toggleFav} style={{ flex: 1 }}>
+                <View style={de.secBtn}>
+                  <Ionicons name={isFaved ? 'heart' : 'heart-outline'} size={17} color={isFaved ? C.rose : C.brand} />
+                  <Text style={de.secBtnText}>{isFaved ? 'Saved' : 'Save'}</Text>
+                </View>
+              </Press>
               {(recipe.source || recipe.youtube) && (
-                <TouchableOpacity
-                  style={[styles.detailSecondaryBtn, { flex: 1 }]}
-                  onPress={openSource}
-                >
-                  <Ionicons name="open-outline" size={18} color={COLORS.primary} />
-                  <Text style={styles.detailSecondaryBtnText}>Source</Text>
-                </TouchableOpacity>
+                <Press onPress={() => Linking.openURL(recipe.source || recipe.youtube)} style={{ flex: 1 }}>
+                  <View style={de.secBtn}>
+                    <Ionicons name="open-outline" size={17} color={C.brand} />
+                    <Text style={de.secBtnText}>Source</Text>
+                  </View>
+                </Press>
               )}
             </View>
           </View>
         </View>
       </ScrollView>
-    </SafeAreaViewEdges>
+    </View>
   );
 }
 
@@ -1556,196 +1596,199 @@ function RecipeDetailScreen({ route, navigation }) {
 function CookModeScreen({ route, navigation }) {
   const { recipe } = route.params;
   const steps = recipe.steps || [];
-  const [currentStep, setCurrentStep] = useState(0);
-  const progressAnim = useRef(new Animated.Value(0)).current;
-  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const [step, setStep] = useState(0);
   const insets = useSafeAreaInsets();
 
+  const progress  = useSharedValue(0);
+  const textOp    = useSharedValue(1);
+  const textTy    = useSharedValue(0);
+  const doneScale = useSharedValue(0);
+
   useEffect(() => {
-    Animated.timing(progressAnim, {
-      toValue: steps.length > 1 ? currentStep / (steps.length - 1) : 1,
-      duration: 400,
-      useNativeDriver: false,
-    }).start();
-  }, [currentStep]);
-
-  const goNext = () => {
-    if (currentStep < steps.length - 1) {
-      Animated.sequence([
-        Animated.timing(fadeAnim, { toValue: 0, duration: 120, useNativeDriver: true }),
-        Animated.timing(fadeAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
-      ]).start();
-      setCurrentStep(currentStep + 1);
+    const pct = steps.length > 1 ? step / (steps.length - 1) : 1;
+    progress.value = withSpring(pct, SPRING.gentle);
+    if (step === steps.length - 1 && steps.length > 1) {
+      doneScale.value = withSpring(1, SPRING.bouncy);
     }
-  };
+  }, [step]);
 
-  const goPrev = () => {
-    if (currentStep > 0) {
-      Animated.sequence([
-        Animated.timing(fadeAnim, { toValue: 0, duration: 120, useNativeDriver: true }),
-        Animated.timing(fadeAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
-      ]).start();
-      setCurrentStep(currentStep - 1);
+  const progressAnim = useAnimatedStyle(() => ({
+    width: `${interpolate(progress.value, [0, 1], [0, 100], Extrapolation.CLAMP)}%`,
+  }));
+
+  const textAnim = useAnimatedStyle(() => ({
+    opacity: textOp.value,
+    transform: [{ translateY: textTy.value }],
+  }));
+
+  function animStep(direction, cb) {
+    textOp.value  = withTiming(0, { duration: TIMING.instant });
+    textTy.value  = withTiming(direction * -14, { duration: TIMING.instant }, () => {
+      runOnJS(cb)();
+      textTy.value  = direction * 14;
+      textOp.value  = withTiming(1, { duration: TIMING.fast });
+      textTy.value  = withSpring(0, SPRING.gentle);
+    });
+  }
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 16 && Math.abs(g.dy) < 60,
+      onPanResponderRelease: (_, g) => {
+        if (g.dx < -50 && step < steps.length - 1) goNext();
+        if (g.dx > 50  && step > 0)               goPrev();
+      },
+    })
+  ).current;
+
+  function goNext() {
+    if (step < steps.length - 1) {
+      haptic.medium();
+      animStep(1, () => setStep(s => s + 1));
     }
-  };
+  }
 
-  const progressWidth = progressAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ["0%", "100%"],
-  });
+  function goPrev() {
+    if (step > 0) {
+      haptic.light();
+      animStep(-1, () => setStep(s => s - 1));
+    }
+  }
 
-  if (steps.length === 0) {
+  const isLast = step === steps.length - 1;
+
+  if (!steps.length) {
     return (
-      <SafeAreaViewEdges style={styles.cookScreen} edges={["top", "left", "right", "bottom"]}>
+      <View style={[cm.root, { paddingTop: insets.top }]}>
         <StatusBar style="light" />
-        <EmptyState icon="reader-outline" title="No instructions" subtitle="This recipe has no step-by-step instructions." dark />
-        <TouchableOpacity style={styles.cookExitBtn} onPress={() => navigation.goBack()}>
-          <Text style={styles.cookExitBtnText}>Go Back</Text>
+        <EmptyState icon="reader-outline" title="No instructions" subtitle="This recipe has no steps." dark />
+        <TouchableOpacity style={cm.exitBtn} onPress={() => navigation.goBack()}>
+          <Text style={cm.exitBtnText}>Go Back</Text>
         </TouchableOpacity>
-      </SafeAreaViewEdges>
+      </View>
     );
   }
 
-  const isLast = currentStep === steps.length - 1;
-
   return (
-    <View style={[styles.cookScreen, { paddingTop: insets.top }]}>
+    <View style={[cm.root, { paddingTop: insets.top }]} {...panResponder.panHandlers}>
       <StatusBar style="light" />
 
       {/* Top bar */}
-      <View style={styles.cookTopBar}>
-        <Text style={styles.cookStepCounter}>
-          Step {currentStep + 1} of {steps.length}
-        </Text>
+      <View style={cm.topBar}>
+        <Text style={cm.stepLabel}>STEP {step + 1} OF {steps.length}</Text>
         <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.cookExitIconBtn}
+          style={cm.closeBtn}
+          onPress={() => { haptic.light(); navigation.goBack(); }}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          <Ionicons name="close" size={24} color={COLORS.darkText} />
+          <Ionicons name="close" size={22} color={C.darkText} />
         </TouchableOpacity>
       </View>
 
       {/* Progress bar */}
-      <View style={styles.cookProgressTrack}>
-        <Animated.View style={[styles.cookProgressBar, { width: progressWidth }]} />
+      <View style={cm.progressTrack}>
+        <Animated.View style={[cm.progressFill, progressAnim]} />
       </View>
 
-      {/* Recipe name */}
-      <Text style={styles.cookRecipeName} numberOfLines={1}>{recipe.name}</Text>
+      <Text style={cm.recipeName} numberOfLines={1}>{recipe.name}</Text>
 
-      {/* Step content */}
-      <Animated.View style={[styles.cookStepContent, { opacity: fadeAnim }]}>
-        <Text style={styles.cookStepText}>{steps[currentStep]}</Text>
+      {/* Step dots */}
+      <View style={cm.dotsRow}>
+        {steps.map((_, i) => (
+          <View
+            key={i}
+            style={[
+              cm.dot,
+              i === step && cm.dotActive,
+              i < step && cm.dotDone,
+            ]}
+          />
+        ))}
+      </View>
+
+      {/* Step text */}
+      <Animated.View style={[cm.stepContent, textAnim]}>
+        <Text style={cm.stepText}>{steps[step]}</Text>
       </Animated.View>
 
       {/* Navigation */}
-      <View style={[styles.cookNavRow, { paddingBottom: insets.bottom + SPACING.lg }]}>
-        <TouchableOpacity
-          style={[styles.cookNavBtn, styles.cookNavBtnSecondary, currentStep === 0 && { opacity: 0.3 }]}
+      <View style={[cm.navRow, { paddingBottom: insets.bottom + S[4] }]}>
+        <Press
           onPress={goPrev}
-          disabled={currentStep === 0}
+          scale={0.95}
+          style={[cm.navBtnWrap, step === 0 && { opacity: 0.28 }]}
+          disabled={step === 0}
         >
-          <Ionicons name="arrow-back" size={20} color={COLORS.darkAccent} />
-          <Text style={styles.cookNavBtnSecondaryText}>Previous</Text>
-        </TouchableOpacity>
+          <View style={cm.navBtnSecondary}>
+            <Ionicons name="arrow-back" size={18} color={C.darkSage} />
+            <Text style={cm.navBtnSecondaryText}>Prev</Text>
+          </View>
+        </Press>
 
-        <TouchableOpacity
-          style={[styles.cookNavBtn, styles.cookNavBtnPrimary]}
-          onPress={isLast ? () => navigation.goBack() : goNext}
-        >
-          <Text style={styles.cookNavBtnPrimaryText}>{isLast ? "Done!" : "Next Step"}</Text>
-          {!isLast && <Ionicons name="arrow-forward" size={20} color="#fff" />}
-          {isLast && <Ionicons name="checkmark" size={20} color="#fff" />}
-        </TouchableOpacity>
+        <Press onPress={isLast ? () => navigation.goBack() : goNext} scale={0.97} style={{ flex: 2 }} hapticType="medium">
+          <LinearGradient
+            colors={[C.brandMid, C.brand]}
+            start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+            style={cm.navBtnPrimary}
+          >
+            <Text style={cm.navBtnPrimaryText}>{isLast ? 'Done!' : 'Next Step'}</Text>
+            <Ionicons name={isLast ? 'checkmark' : 'arrow-forward'} size={18} color="#fff" />
+          </LinearGradient>
+        </Press>
       </View>
     </View>
-  );
-}
-
-// ─── API Key Modal ────────────────────────────────────────────────────────────
-
-function ApiKeyModal({ visible, onClose, tempKey, setTempKey, onSave }) {
-  return (
-    <Modal visible={visible} transparent animationType="fade">
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          <View style={styles.modalHeader}>
-            <View style={styles.modalIconWrap}>
-              <Ionicons name="key-outline" size={26} color={COLORS.primary} />
-            </View>
-            <Text style={styles.modalTitle}>OpenAI API Key</Text>
-            <Text style={styles.modalSubtitle}>Required for AI ingredient detection</Text>
-          </View>
-          <TextInput
-            style={styles.modalInput}
-            placeholder="sk-..."
-            placeholderTextColor={COLORS.textLight}
-            value={tempKey}
-            onChangeText={setTempKey}
-            secureTextEntry
-            autoCapitalize="none"
-          />
-          <View style={styles.modalButtons}>
-            <TouchableOpacity style={styles.modalCancelBtn} onPress={onClose}>
-              <Text style={styles.modalCancelText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.modalSaveBtn, !tempKey && { opacity: 0.5 }]}
-              onPress={onSave}
-              disabled={!tempKey}
-            >
-              <Text style={styles.modalSaveText}>Save</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
   );
 }
 
 // ─── Navigation ───────────────────────────────────────────────────────────────
 
 function TabNavigator() {
+  const insets = useSafeAreaInsets();
+
   return (
     <Tab.Navigator
-      screenOptions={({ route }) => ({
-        headerShown: false,
-        tabBarStyle: route.name === "ScanTab"
-          ? styles.tabBarDark
-          : styles.tabBarLight,
-        tabBarActiveTintColor: route.name === "ScanTab" ? COLORS.darkAccent : COLORS.primary,
-        tabBarInactiveTintColor: route.name === "ScanTab" ? "rgba(168,197,176,0.45)" : COLORS.textLight,
-        tabBarLabelStyle: styles.tabBarLabel,
-      })}
+      screenOptions={({ route }) => {
+        const isDark = route.name === 'ScanTab';
+        return {
+          headerShown: false,
+          tabBarStyle: [
+            isDark ? tb.dark : tb.light,
+            { paddingBottom: insets.bottom > 0 ? insets.bottom : 16 },
+          ],
+          tabBarActiveTintColor:   isDark ? C.darkSage : C.brand,
+          tabBarInactiveTintColor: isDark ? 'rgba(124,184,152,0.4)' : C.ink300,
+          tabBarLabelStyle: tb.label,
+          tabBarHideOnKeyboard: true,
+        };
+      }}
     >
       <Tab.Screen
         name="ScanTab"
-        component={ScanTab}
+        component={ScanScreen}
         options={{
-          tabBarLabel: "Scan",
-          tabBarIcon: ({ focused, color }) => (
-            <Ionicons name={focused ? "scan-circle" : "scan-circle-outline"} size={26} color={color} />
+          tabBarLabel: 'Scan',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'scan-circle' : 'scan-circle-outline'} size={26} color={color} />
           ),
         }}
       />
       <Tab.Screen
         name="KitchenTab"
-        component={KitchenTab}
+        component={KitchenScreen}
         options={{
-          tabBarLabel: "Kitchen",
-          tabBarIcon: ({ focused, color }) => (
-            <Ionicons name={focused ? "nutrition" : "nutrition-outline"} size={24} color={color} />
+          tabBarLabel: 'Kitchen',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'nutrition' : 'nutrition-outline'} size={24} color={color} />
           ),
         }}
       />
       <Tab.Screen
         name="SavedTab"
-        component={SavedTab}
+        component={SavedScreen}
         options={{
-          tabBarLabel: "Saved",
-          tabBarIcon: ({ focused, color }) => (
-            <Ionicons name={focused ? "bookmark" : "bookmark-outline"} size={24} color={color} />
+          tabBarLabel: 'Saved',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'bookmark' : 'bookmark-outline'} size={24} color={color} />
           ),
         }}
       />
@@ -1753,1268 +1796,1225 @@ function TabNavigator() {
   );
 }
 
+// ─── Root App ─────────────────────────────────────────────────────────────────
+
 export default function App() {
+  const [fontsLoaded] = useFonts({
+    'Inter-Regular':   Inter_400Regular,
+    'Inter-Medium':    Inter_500Medium,
+    'Inter-SemiBold':  Inter_600SemiBold,
+    'Inter-Bold':      Inter_700Bold,
+    'Playfair-Bold':   PlayfairDisplay_700Bold,
+    'Playfair-SemiBold': PlayfairDisplay_600SemiBold,
+  });
+
+  if (!fontsLoaded) return null;
+
   return (
     <SafeAreaProvider>
       <NavigationContainer>
-        <Stack.Navigator screenOptions={{ headerShown: false, animation: "slide_from_right" }}>
+        <Stack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
           <Stack.Screen name="MainTabs" component={TabNavigator} />
           <Stack.Screen name="Results" component={ResultsScreen} />
           <Stack.Screen name="RecipeDetail" component={RecipeDetailScreen} />
-          <Stack.Screen
-            name="CookMode"
-            component={CookModeScreen}
-            options={{ animation: "slide_from_bottom" }}
-          />
+          <Stack.Screen name="CookMode" component={CookModeScreen} options={{ animation: 'slide_from_bottom' }} />
         </Stack.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>
   );
 }
 
-// ─── StyleSheet ───────────────────────────────────────────────────────────────
+// ─── Styles ───────────────────────────────────────────────────────────────────
+// Organized by screen prefix to avoid naming collisions.
 
-const styles = StyleSheet.create({
-  // ── Containers ──
-  lightContainer: {
-    flex: 1,
-    backgroundColor: COLORS.background,
+// ── Global UI ────────────────────────────────────────────────────────────────
+const ui = StyleSheet.create({
+  emptyWrap: {
+    alignItems: 'center',
+    paddingVertical: S[10],
+    paddingHorizontal: S[8],
   },
-  scrollView: {
-    flex: 1,
+  emptyIcon: {
+    width: 72, height: 72,
+    borderRadius: R['2xl'],
+    backgroundColor: C.brandTint,
+    justifyContent: 'center', alignItems: 'center',
+    marginBottom: S[5],
   },
-
-  // ── Empty State ──
-  emptyState: {
-    alignItems: "center",
-    paddingVertical: SPACING.xxl,
-    paddingHorizontal: SPACING.xl,
+  emptyTitle: {
+    fontFamily: FONT.sansBold,
+    fontSize: FONT.md,
+    color: C.ink700,
+    marginBottom: S[2],
+    textAlign: 'center',
+    letterSpacing: FONT.snug,
   },
-  emptyStateIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: RADIUS.xl,
-    backgroundColor: COLORS.accentLight,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: SPACING.xl,
+  emptySub: {
+    fontFamily: FONT.sans,
+    fontSize: FONT.sm,
+    color: C.ink400,
+    textAlign: 'center',
+    lineHeight: FONT.sm * FONT.normal2,
   },
-  emptyStateTitle: {
-    fontSize: 19,
-    fontWeight: "700",
-    color: COLORS.text,
-    marginBottom: SPACING.sm,
-    letterSpacing: -0.3,
+  emptyBtn: { marginTop: S[5] },
+  emptyBtnInner: {
+    backgroundColor: C.brand,
+    paddingHorizontal: S[6],
+    paddingVertical: S[3] + 2,
+    borderRadius: R.full,
+    ...SHADOW.md,
   },
-  emptyStateSubtitle: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    textAlign: "center",
-    lineHeight: 22,
-  },
-  emptyStateButton: {
-    marginTop: SPACING.xl,
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: SPACING.xl + 8,
-    paddingVertical: SPACING.md + 2,
-    borderRadius: RADIUS.full,
-    ...SHADOWS.md,
-  },
-  emptyStateButtonText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#fff",
+  emptyBtnText: {
+    fontFamily: FONT.sansSemiBold,
+    fontSize: FONT.sm,
+    color: '#fff',
   },
 
-  // ── Scan Screen ──
-  scanScreenDark: {
+  sectionLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: S[3],
+  },
+  sectionLabel: {
+    fontFamily: FONT.sansSemiBold,
+    fontSize: FONT.xs,
+    color: C.ink400,
+    textTransform: 'uppercase',
+    letterSpacing: FONT.wider,
+  },
+
+  // Recipe card (full-width)
+  card: {
+    backgroundColor: C.bgSurface,
+    borderRadius: R['2xl'],
+    overflow: 'hidden',
+    ...SHADOW.md,
+  },
+  cardImageWrap: {
+    height: 210,
+    position: 'relative',
+    backgroundColor: C.bgSubtle,
+  },
+  cardImage: {
+    width: '100%', height: '100%', resizeMode: 'cover',
+  },
+  cardImagePlaceholder: {
+    flex: 1, justifyContent: 'center', alignItems: 'center',
+    backgroundColor: C.bgSubtle,
+  },
+  cardGradient: {
+    position: 'absolute', bottom: 0, left: 0, right: 0, height: 80,
+  },
+  cardReadyBadge: {
+    position: 'absolute', bottom: 12, left: 12,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: C.emerald,
+    paddingHorizontal: S[3], paddingVertical: 5,
+    borderRadius: R.full,
+  },
+  cardReadyText: {
+    fontFamily: FONT.sansSemiBold,
+    fontSize: FONT.xs, color: '#fff',
+  },
+  cardCuisineTag: {
+    position: 'absolute', top: 12, left: 12,
+    backgroundColor: 'rgba(0,0,0,0.42)',
+    paddingHorizontal: S[3], paddingVertical: 4,
+    borderRadius: R.full,
+  },
+  cardCuisineText: {
+    fontFamily: FONT.sansMed, fontSize: 11, color: '#fff',
+  },
+  cardContent: {
+    padding: S[4], paddingRight: S[4] + 28,
+  },
+  cardTitle: {
+    fontFamily: FONT.serif,
+    fontSize: FONT.lg,
+    color: C.ink900,
+    lineHeight: FONT.lg * FONT.snug2,
+    letterSpacing: FONT.tight,
+    marginBottom: S[2],
+  },
+  cardMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: S[3],
+  },
+  cardMetaText: {
+    fontFamily: FONT.sans,
+    fontSize: FONT.sm, color: C.ink400,
+  },
+  cardMissing: {
+    fontFamily: FONT.sansMed,
+    fontSize: FONT.xs,
+    color: C.amber,
+    marginTop: S[1] + 2,
+  },
+  cardHeart: {
+    position: 'absolute', bottom: S[4], right: S[4],
+  },
+
+  // Grid card
+  gridCard: {
+    width: (W - S[6] * 2 - S[3]) / 2,
+    backgroundColor: C.bgSurface,
+    borderRadius: R.xl,
+    overflow: 'hidden',
+    ...SHADOW.sm,
+  },
+  gridCardImg: {
+    width: '100%', height: 110, resizeMode: 'cover',
+  },
+  gridCardPlaceholder: {
+    width: '100%', height: 110,
+    backgroundColor: C.bgSubtle,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  gridCardBody: { padding: S[3] },
+  gridCardTitle: {
+    fontFamily: FONT.sansSemiBold,
+    fontSize: FONT.sm,
+    color: C.ink700,
+    lineHeight: FONT.sm * FONT.normal2,
+  },
+
+  // Modal
+  modalOverlay: {
     flex: 1,
-    backgroundColor: COLORS.darkBg,
+    backgroundColor: 'rgba(0,0,0,0.52)',
+    justifyContent: 'flex-end',
+    padding: 0,
   },
-  scanHeader: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    paddingHorizontal: SPACING.xl,
-    paddingTop: SPACING.sm,
-    paddingBottom: SPACING.lg,
+  modalSheet: {
+    backgroundColor: C.bgSurface,
+    borderTopLeftRadius: R['3xl'],
+    borderTopRightRadius: R['3xl'],
+    padding: S[6],
+    paddingBottom: S[10],
+    ...SHADOW.lg,
   },
-  scanSettingsBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "rgba(168,197,176,0.12)",
-    justifyContent: "center",
-    alignItems: "center",
+  modalDragHandle: {
+    width: 36, height: 4,
+    backgroundColor: C.rim,
+    borderRadius: R.full,
+    alignSelf: 'center',
+    marginBottom: S[5],
   },
-  scanEmptyContent: {
+  modalIconRow: { alignItems: 'center', marginBottom: S[4] },
+  modalIconBg: {
+    width: 52, height: 52, borderRadius: R.xl,
+    backgroundColor: C.brandTint,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  modalTitle: {
+    fontFamily: FONT.sansBold,
+    fontSize: FONT.lg,
+    color: C.ink900,
+    textAlign: 'center',
+    marginBottom: S[1],
+    letterSpacing: FONT.snug,
+  },
+  modalSub: {
+    fontFamily: FONT.sans,
+    fontSize: FONT.sm, color: C.ink400,
+    textAlign: 'center',
+    marginBottom: S[5],
+  },
+  input: {
+    height: 52,
+    backgroundColor: C.bgSubtle,
+    borderRadius: R.lg,
+    paddingHorizontal: S[4],
+    fontFamily: FONT.sans,
+    fontSize: FONT.base,
+    color: C.ink700,
+    marginBottom: S[3],
+    borderWidth: 1.5,
+    borderColor: C.rim,
+  },
+  modalBtnRow: {
+    flexDirection: 'row', gap: S[2], marginTop: S[2],
+  },
+  btnPrimary: {
+    height: 52, borderRadius: R.lg,
+    backgroundColor: C.brand,
+    justifyContent: 'center', alignItems: 'center',
+    ...SHADOW.sm,
+  },
+  btnPrimaryText: {
+    fontFamily: FONT.sansBold, fontSize: FONT.base, color: '#fff',
+  },
+  btnSecondary: {
+    height: 52, borderRadius: R.lg,
+    backgroundColor: C.bgSubtle,
+    justifyContent: 'center', alignItems: 'center',
+    borderWidth: 1.5, borderColor: C.rim,
+  },
+  btnSecondaryText: {
+    fontFamily: FONT.sansSemiBold, fontSize: FONT.base, color: C.ink500,
+  },
+  btnDanger: {
+    height: 52, borderRadius: R.lg,
+    backgroundColor: C.roseBg,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  btnDangerText: {
+    fontFamily: FONT.sansSemiBold, fontSize: FONT.base, color: C.rose,
+  },
+});
+
+// ── ScanScreen Styles ────────────────────────────────────────────────────────
+const sc = StyleSheet.create({
+  scanRoot: {
+    flex: 1, backgroundColor: C.dark,
+  },
+  safeTop: { height: 52 },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: S[6],
+    paddingBottom: S[4],
+  },
+  headerTitle: {
+    fontFamily: FONT.sansBold,
+    fontSize: FONT.xl,
+    color: C.darkText,
+    letterSpacing: FONT.tight,
+  },
+  settingsBtn: {
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: 'rgba(124,184,152,0.1)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  emptyCenter: {
     flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: SPACING.xl,
-    paddingBottom: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: S[6],
+    paddingBottom: S[12],
   },
-  scanIllustration: {
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    overflow: "hidden",
-    marginBottom: SPACING.xxl + 8,
-    ...SHADOWS.lg,
+  ringWrap: {
+    width: 160, height: 160,
+    justifyContent: 'center', alignItems: 'center',
+    marginBottom: S[8],
   },
-  scanIllustrationGradient: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    position: "relative",
+  scanIconContainer: {
+    width: 88, height: 88, borderRadius: 44,
+    backgroundColor: C.darkRim,
+    justifyContent: 'center', alignItems: 'center',
+    borderWidth: 1,
+    borderColor: C.darkBorder,
+    ...SHADOW.md,
   },
-  scanIllustrationEmoji: {
-    fontSize: 52,
-    position: "absolute",
+  emptyClaim: {
+    fontFamily: FONT.sansBold,
+    fontSize: FONT['2xl'],
+    color: C.darkText,
+    textAlign: 'center',
+    letterSpacing: FONT.tight,
+    lineHeight: FONT['2xl'] * FONT.tight2,
+    marginBottom: S[3],
   },
-  scanEmptyClaim: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: COLORS.darkText,
-    textAlign: "center",
-    letterSpacing: -0.5,
-    marginBottom: SPACING.xxl,
-    lineHeight: 32,
+  emptySubclaim: {
+    fontFamily: FONT.sans,
+    fontSize: FONT.sm,
+    color: C.darkTextSub,
+    textAlign: 'center',
+    lineHeight: FONT.sm * FONT.normal2,
+    marginBottom: S[8],
   },
-  scanPrimaryBtn: {
-    width: "100%",
-    maxWidth: 340,
-    borderRadius: RADIUS.full,
-    overflow: "hidden",
-    marginBottom: SPACING.xl,
-    ...SHADOWS.lg,
+  primaryBtnWrap: { width: '100%', maxWidth: 340 },
+  primaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: S[2],
+    paddingVertical: S[4] + 2,
+    paddingHorizontal: S[6],
+    borderRadius: R.full,
+    ...SHADOW.md,
   },
-  scanPrimaryBtnGradient: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: SPACING.sm,
-    paddingVertical: SPACING.lg + 2,
-    paddingHorizontal: SPACING.xxl,
+  primaryBtnText: {
+    fontFamily: FONT.sansBold,
+    fontSize: FONT.md,
+    color: '#fff',
+    letterSpacing: FONT.snug,
   },
-  scanPrimaryBtnText: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: "#fff",
-    letterSpacing: -0.2,
+  secondaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: S[3],
+    marginTop: S[4],
   },
-  scanSecondaryRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: SPACING.md,
+  secondaryBtn: {
+    paddingVertical: S[2], paddingHorizontal: S[3],
   },
-  scanSecondaryBtn: {
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
+  secondaryBtnText: {
+    fontFamily: FONT.sansMed,
+    fontSize: FONT.sm,
+    color: C.darkSage,
   },
-  scanSecondaryBtnText: {
-    fontSize: 14,
-    color: COLORS.darkAccent,
-    fontWeight: "500",
-  },
-  scanSecondaryDot: {
-    color: COLORS.darkAccent,
+  dot: {
+    fontFamily: FONT.sans,
+    fontSize: FONT.sm,
+    color: C.darkSage,
     opacity: 0.4,
   },
 
-  // Scan - Has Results State
-  scanHasResultsHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: SPACING.xl,
-    paddingTop: SPACING.sm,
-    paddingBottom: SPACING.lg,
-  },
-  scanHasResultsTitle: {
-    fontSize: 28,
-    fontWeight: "800",
-    color: COLORS.darkText,
-    letterSpacing: -0.8,
-  },
-  scanLastScanCard: {
-    marginHorizontal: SPACING.xl,
-    backgroundColor: COLORS.darkSurface,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.lg,
-    marginBottom: SPACING.xl,
+  // Has results
+  lastScanCard: {
+    marginHorizontal: S[6],
+    backgroundColor: C.darkSurface,
+    borderRadius: R['2xl'],
+    padding: S[4],
+    marginBottom: S[4],
     borderWidth: 1,
-    borderColor: "rgba(168,197,176,0.12)",
+    borderColor: C.darkBorder,
   },
-  scanLastScanMeta: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: SPACING.md,
+  lastScanHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: S[2],
   },
-  scanLastScanLabel: {
-    fontSize: 13,
-    color: COLORS.darkAccent,
-    fontWeight: "500",
+  lastScanDot: {
+    width: 7, height: 7, borderRadius: 4,
+    backgroundColor: C.darkSage,
   },
-  scanMiniCards: {
-    marginBottom: SPACING.md,
+  lastScanLabel: {
+    flex: 1,
+    fontFamily: FONT.sansMed,
+    fontSize: FONT.sm,
+    color: C.darkSage,
   },
-  scanMiniCard: {
-    width: 100,
-    marginRight: SPACING.sm,
+  miniCard: {
+    width: 104, marginRight: S[3],
   },
-  scanMiniCardImage: {
-    width: 100,
-    height: 70,
-    borderRadius: RADIUS.md,
-    resizeMode: "cover",
-    marginBottom: SPACING.xs,
+  miniCardImg: {
+    width: 104, height: 72,
+    borderRadius: R.lg,
+    resizeMode: 'cover',
+    marginBottom: S[2],
+    backgroundColor: C.darkRim,
   },
-  scanMiniCardPlaceholder: {
-    width: 100,
-    height: 70,
-    borderRadius: RADIUS.md,
-    backgroundColor: COLORS.darkBg,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: SPACING.xs,
-  },
-  scanMiniCardName: {
+  miniCardName: {
+    fontFamily: FONT.sansMed,
     fontSize: 11,
-    color: COLORS.darkTextSub,
-    fontWeight: "500",
+    color: C.darkTextSub,
     lineHeight: 15,
   },
-  scanLastScanStats: {
-    fontSize: 13,
-    color: COLORS.darkTextSub,
+  lastScanStats: {
+    fontFamily: FONT.sans,
+    fontSize: FONT.xs,
+    color: C.darkTextSub,
+    marginTop: S[3],
   },
-  scanSeeAllBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 4,
-    marginBottom: SPACING.xl,
-    paddingVertical: SPACING.sm,
+  seeAllBtn: {
+    marginHorizontal: S[6],
+    marginBottom: S[2],
   },
-  scanSeeAllText: {
-    fontSize: 14,
-    color: COLORS.darkAccent,
-    fontWeight: "500",
+  seeAllInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: S[2],
+    paddingVertical: S[3],
+  },
+  seeAllText: {
+    fontFamily: FONT.sansSemiBold,
+    fontSize: FONT.sm,
+    color: C.darkSage,
   },
 
-  // Scan - Loading State
-  scanLoadingScreen: {
+  // Loading
+  loadingTop: {
     flex: 1,
-    backgroundColor: COLORS.darkBg,
-    justifyContent: "space-between",
-    paddingTop: 80,
-    paddingBottom: 60,
-    paddingHorizontal: SPACING.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: S[12],
   },
-  scanLoadingTop: {
-    alignItems: "center",
+  loadingSpinner: {
+    width: 100, height: 100,
+    justifyContent: 'center', alignItems: 'center',
+    marginBottom: S[7],
   },
-  scanLoadingIconRing: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    borderWidth: 1.5,
-    borderColor: "rgba(168,197,176,0.3)",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: SPACING.xl,
+  loadingIconBg: {
+    width: 68, height: 68, borderRadius: 34,
+    backgroundColor: C.darkRim,
+    justifyContent: 'center', alignItems: 'center',
+    borderWidth: 1, borderColor: C.darkBorder,
   },
-  scanLoadingTitle: {
-    fontSize: 26,
-    fontWeight: "700",
-    color: COLORS.darkText,
-    textAlign: "center",
-    letterSpacing: -0.5,
-    marginBottom: SPACING.sm,
+  loadingTitle: {
+    fontFamily: FONT.sansBold,
+    fontSize: FONT.xl,
+    color: C.darkText,
+    textAlign: 'center',
+    letterSpacing: FONT.snug,
+    marginBottom: S[2],
   },
-  scanLoadingSubtitle: {
-    fontSize: 14,
-    color: COLORS.darkTextSub,
-    textAlign: "center",
+  loadingSubtitle: {
+    fontFamily: FONT.sans,
+    fontSize: FONT.sm,
+    color: C.darkTextSub,
+    textAlign: 'center',
   },
-  scanFoundChips: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "center",
-    gap: SPACING.sm,
-    paddingVertical: SPACING.xl,
+  ingredientCloud: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: S[2],
+    paddingHorizontal: S[6],
+    paddingVertical: S[6],
   },
-  scanFoundChip: {
-    backgroundColor: "rgba(168,197,176,0.15)",
-    borderRadius: RADIUS.full,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.sm,
+  ingredientPill: {
+    backgroundColor: 'rgba(124,184,152,0.12)',
+    borderRadius: R.full,
+    paddingHorizontal: S[4],
+    paddingVertical: S[2],
     borderWidth: 1,
-    borderColor: "rgba(168,197,176,0.2)",
+    borderColor: 'rgba(124,184,152,0.2)',
   },
-  scanFoundChipText: {
-    fontSize: 13,
-    color: COLORS.darkAccent,
-    fontWeight: "500",
-    textTransform: "capitalize",
+  ingredientPillText: {
+    fontFamily: FONT.sansMed,
+    fontSize: FONT.sm,
+    color: C.darkSage,
   },
-  scanProgressWrap: {
-    alignItems: "center",
+  loadingBottom: {
+    paddingHorizontal: S[8],
+    paddingBottom: S[10],
+    alignItems: 'center',
   },
-  scanProgressTrack: {
-    width: "100%",
-    height: 3,
-    backgroundColor: "rgba(168,197,176,0.15)",
-    borderRadius: 2,
-    marginBottom: SPACING.md,
-    overflow: "hidden",
+  progressTrack: {
+    width: '100%', height: 2,
+    backgroundColor: 'rgba(124,184,152,0.15)',
+    borderRadius: 1,
+    overflow: 'hidden',
+    marginBottom: S[3],
   },
-  scanProgressBar: {
-    height: "100%",
-    backgroundColor: COLORS.darkAccent,
-    borderRadius: 2,
+  progressFill: {
+    height: '100%',
+    backgroundColor: C.darkSage,
+    borderRadius: 1,
   },
-  scanProgressLabel: {
-    fontSize: 12,
-    color: COLORS.darkTextSub,
+  progressLabel: {
+    fontFamily: FONT.sans,
+    fontSize: 11,
+    color: C.darkTextSub,
   },
+});
 
-  // ── Results Screen ──
-  resultsScreen: {
-    flex: 1,
-    backgroundColor: COLORS.background,
+// ── Results Styles ────────────────────────────────────────────────────────────
+const re = StyleSheet.create({
+  root: {
+    flex: 1, backgroundColor: C.bgBase,
   },
-  resultsHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: SPACING.xl,
-    paddingTop: SPACING.md,
-    paddingBottom: SPACING.lg,
-    backgroundColor: COLORS.background,
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: S[6],
+    paddingTop: S[3],
+    paddingBottom: S[4],
   },
-  resultsBackBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.card,
-    justifyContent: "center",
-    alignItems: "center",
-    ...SHADOWS.sm,
+  backBtn: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: C.bgSurface,
+    justifyContent: 'center', alignItems: 'center',
+    ...SHADOW.xs,
   },
-  resultsHeaderTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: COLORS.text,
-    letterSpacing: -0.4,
-    textAlign: "center",
+  headerCenter: { alignItems: 'center' },
+  headerTitle: {
+    fontFamily: FONT.sansBold,
+    fontSize: FONT.md,
+    color: C.ink900,
+    letterSpacing: FONT.snug,
   },
-  resultsHeaderSub: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    textAlign: "center",
+  headerSub: {
+    fontFamily: FONT.sans,
+    fontSize: FONT.xs,
+    color: C.ink400,
     marginTop: 2,
   },
-  filterTabsWrap: {
-    backgroundColor: COLORS.background,
+  tabsWrap: {
+    backgroundColor: C.bgBase,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-    marginBottom: 0,
+    borderBottomColor: C.rim,
+    paddingHorizontal: S[6],
+    paddingTop: S[2],
   },
-  filterTabsScroll: {
-    paddingHorizontal: SPACING.xl,
-    paddingVertical: SPACING.md,
-    gap: SPACING.sm,
+  tabsRow: {
+    flexDirection: 'row',
+    paddingBottom: S[3],
   },
-  filterTab: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.lg,
-    borderRadius: RADIUS.full,
-    backgroundColor: COLORS.card,
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
-  },
-  filterTabActive: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
-  },
-  filterTabText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: COLORS.textSecondary,
-  },
-  filterTabTextActive: {
-    color: "#fff",
-  },
-  filterTabBadge: {
-    backgroundColor: COLORS.border,
-    borderRadius: RADIUS.full,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    minWidth: 20,
-    alignItems: "center",
-  },
-  filterTabBadgeActive: {
-    backgroundColor: "rgba(255,255,255,0.25)",
-  },
-  filterTabBadgeText: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: COLORS.textSecondary,
-  },
-  recipeListContent: {
-    paddingHorizontal: SPACING.xl,
-    paddingTop: SPACING.lg,
-    paddingBottom: 100,
-    gap: SPACING.md,
-  },
-
-  // Full Recipe Card
-  fullRecipeCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: RADIUS.xl,
-    overflow: "hidden",
-    ...SHADOWS.md,
-  },
-  fullRecipeCardReady: {
-    borderWidth: 1.5,
-    borderColor: COLORS.matchReady + "40",
-  },
-  fullRecipeImageWrap: {
-    height: 200,
-    position: "relative",
-    backgroundColor: COLORS.border,
-  },
-  fullRecipeImage: {
-    width: "100%",
-    height: "100%",
-    resizeMode: "cover",
-  },
-  fullRecipeImagePlaceholder: {
+  tab: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: COLORS.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: S[2],
   },
-  readyBadgeOverlay: {
-    position: "absolute",
-    bottom: 12,
-    left: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: COLORS.matchReady,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: RADIUS.full,
+  tabLabel: {
+    fontFamily: FONT.sansSemiBold,
+    fontSize: FONT.sm,
+    color: C.ink400,
   },
-  readyBadgeText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#fff",
+  tabLabelActive: { color: C.brand },
+  tabCount: {
+    backgroundColor: C.rim,
+    borderRadius: R.full,
+    minWidth: 18, height: 18,
+    paddingHorizontal: 5,
+    justifyContent: 'center', alignItems: 'center',
   },
-  fullRecipeContent: {
-    padding: SPACING.lg,
-    paddingRight: 52,
+  tabCountActive: { backgroundColor: C.brandTint },
+  tabCountText: {
+    fontFamily: FONT.sansBold, fontSize: 10, color: C.ink400,
   },
-  fullRecipeTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: COLORS.text,
-    letterSpacing: -0.4,
-    lineHeight: 24,
-    marginBottom: SPACING.sm,
+  tabCountTextActive: { color: C.brand },
+  indicatorTrack: {
+    height: 2.5,
+    position: 'relative',
+    marginTop: -1,
   },
-  fullRecipeMetaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.sm,
-    flexWrap: "wrap",
+  indicator: {
+    position: 'absolute',
+    top: 0, bottom: 0, left: 0,
+    backgroundColor: C.brand,
+    borderRadius: R.full,
   },
-  fullRecipeMetaText: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    fontWeight: "500",
+  listContent: {
+    paddingHorizontal: S[6],
+    paddingTop: S[5],
+    paddingBottom: 120,
+    gap: S[4],
   },
-  fullRecipeTag: {
-    backgroundColor: COLORS.border,
-    borderRadius: RADIUS.full,
-    paddingHorizontal: SPACING.sm + 2,
-    paddingVertical: 3,
-  },
-  fullRecipeTagText: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: COLORS.textSecondary,
-  },
-  fullRecipeMissing: {
-    marginTop: 6,
-    fontSize: 12,
-    color: COLORS.warning,
-    fontWeight: "500",
-  },
-  fullRecipeHeart: {
-    position: "absolute",
-    top: SPACING.lg,
-    right: SPACING.lg,
-    padding: 4,
-  },
+});
 
-  // Grid Card (Saved tab)
-  favoritesGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: SPACING.sm,
+// ── Kitchen Styles ────────────────────────────────────────────────────────────
+const ki = StyleSheet.create({
+  root: { flex: 1, backgroundColor: C.bgBase },
+  safeTop: { height: 52 },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: S[6],
+    paddingBottom: S[4],
   },
-  gridCard: {
-    width: (SCREEN_WIDTH - SPACING.xl * 2 - SPACING.sm * 2) / 3,
-    borderRadius: RADIUS.lg,
-    overflow: "hidden",
-    backgroundColor: COLORS.card,
-    ...SHADOWS.sm,
+  title: {
+    fontFamily: FONT.sansBold,
+    fontSize: FONT['2xl'],
+    color: C.ink900,
+    letterSpacing: FONT.tight,
   },
-  gridCardImage: {
-    width: "100%",
-    height: 90,
-    resizeMode: "cover",
+  addBtn: {
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: C.brand,
+    justifyContent: 'center', alignItems: 'center',
+    ...SHADOW.sm,
   },
-  gridCardImagePlaceholder: {
-    width: "100%",
-    height: 90,
-    backgroundColor: COLORS.border,
-    justifyContent: "center",
-    alignItems: "center",
+  summaryCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: R['2xl'],
+    padding: S[5],
+    ...SHADOW.md,
   },
-  gridCardName: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: COLORS.text,
-    padding: SPACING.sm,
-    lineHeight: 15,
+  summaryLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: S[4],
   },
-
-  // ── Kitchen Tab ──
-  kitchenHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: SPACING.xl,
-    paddingTop: SPACING.sm,
-    paddingBottom: SPACING.lg,
+  summaryNumber: {
+    fontFamily: FONT.sansBold,
+    fontSize: FONT['4xl'],
+    color: '#fff',
+    letterSpacing: FONT.tight,
   },
-  kitchenHeaderTitle: {
-    fontSize: 30,
-    fontWeight: "800",
-    color: COLORS.text,
-    letterSpacing: -0.8,
+  summaryLabel: {
+    fontFamily: FONT.sansSemiBold,
+    fontSize: FONT.base,
+    color: 'rgba(255,255,255,0.9)',
   },
-  kitchenEditBtn: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.sm,
-    borderRadius: RADIUS.full,
-  },
-  kitchenEditBtnText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#fff",
-  },
-  kitchenSummaryCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginHorizontal: SPACING.xl,
-    marginBottom: SPACING.xl,
-    backgroundColor: COLORS.primary,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.xl,
-    ...SHADOWS.md,
-  },
-  kitchenSummaryLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.lg,
-  },
-  kitchenSummaryNumber: {
-    fontSize: 36,
-    fontWeight: "800",
-    color: "#fff",
-    letterSpacing: -1,
-  },
-  kitchenSummaryTitle: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "rgba(255,255,255,0.9)",
-  },
-  kitchenSummarySubtitle: {
-    fontSize: 12,
-    color: "rgba(255,255,255,0.6)",
+  summarySub: {
+    fontFamily: FONT.sans,
+    fontSize: FONT.xs,
+    color: 'rgba(255,255,255,0.6)',
     marginTop: 2,
   },
-  kitchenCategories: {
-    paddingHorizontal: SPACING.xl,
-    gap: SPACING.xl,
+  categories: {
+    paddingHorizontal: S[6],
+    gap: S[6],
   },
-  kitchenCategorySection: {
-    gap: SPACING.sm,
+  catSection: {},
+  catLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: S[2],
+    marginBottom: S[3],
   },
-  kitchenCategoryLabel: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: COLORS.textLight,
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
+  catEmoji: { fontSize: 14 },
+  catLabel: {
+    fontFamily: FONT.sansSemiBold,
+    fontSize: FONT.xs,
+    color: C.ink400,
+    textTransform: 'uppercase',
+    letterSpacing: FONT.wider,
   },
-  kitchenChipRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: SPACING.sm,
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: S[2],
   },
-  kitchenChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: COLORS.card,
-    borderRadius: RADIUS.full,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.sm + 2,
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: C.bgSurface,
+    borderRadius: R.full,
+    paddingHorizontal: S[4],
+    paddingVertical: S[2] + 2,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    ...SHADOWS.sm,
+    borderColor: C.rim,
+    ...SHADOW.xs,
   },
-  kitchenChipText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: COLORS.text,
-    textTransform: "capitalize",
+  chipText: {
+    fontFamily: FONT.sansSemiBold,
+    fontSize: FONT.sm,
+    color: C.ink700,
   },
-  kitchenChipQty: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
+  chipQty: {
+    fontFamily: FONT.sans,
+    fontSize: FONT.sm,
+    color: C.ink400,
   },
-  kitchenAddBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: SPACING.sm,
-    marginHorizontal: SPACING.xl,
-    marginTop: SPACING.xl,
-    paddingVertical: SPACING.lg,
-    borderRadius: RADIUS.lg,
+  addRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: S[2],
+    marginHorizontal: S[6],
+    marginTop: S[6],
+    paddingVertical: S[4],
+    borderRadius: R.lg,
     borderWidth: 1.5,
-    borderColor: COLORS.border,
-    borderStyle: "dashed",
+    borderColor: C.rim,
+    borderStyle: 'dashed',
   },
-  kitchenAddBtnText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: COLORS.primary,
+  addRowText: {
+    fontFamily: FONT.sansSemiBold,
+    fontSize: FONT.sm,
+    color: C.brand,
   },
+});
 
-  // ── Saved Tab ──
-  savedHeader: {
-    paddingHorizontal: SPACING.xl,
-    paddingTop: SPACING.sm,
-    paddingBottom: SPACING.lg,
+// ── Saved Styles ──────────────────────────────────────────────────────────────
+const sv = StyleSheet.create({
+  root: { flex: 1, backgroundColor: C.bgBase },
+  safeTop: { height: 52 },
+  header: {
+    paddingHorizontal: S[6],
+    paddingBottom: S[4],
   },
-  savedHeaderTitle: {
-    fontSize: 30,
-    fontWeight: "800",
-    color: COLORS.text,
-    letterSpacing: -0.8,
+  title: {
+    fontFamily: FONT.sansBold,
+    fontSize: FONT['2xl'],
+    color: C.ink900,
+    letterSpacing: FONT.tight,
   },
-  savedSection: {
-    marginHorizontal: SPACING.xl,
-    marginBottom: SPACING.xxl,
+  section: {
+    paddingHorizontal: S[6],
+    marginBottom: S[7],
   },
-  savedSectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: SPACING.lg,
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: S[4],
   },
-  savedSectionTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.sm,
+  sectionTitle: {
+    fontFamily: FONT.sansBold,
+    fontSize: FONT.md,
+    color: C.ink900,
+    letterSpacing: FONT.snug,
   },
-  savedSectionTitle: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: COLORS.text,
-    letterSpacing: -0.3,
+  badge: {
+    backgroundColor: C.brandTint,
+    borderRadius: R.full,
+    minWidth: 20, height: 20,
+    paddingHorizontal: 6,
+    justifyContent: 'center', alignItems: 'center',
   },
-  savedBadge: {
-    backgroundColor: COLORS.primary + "15",
-    borderRadius: RADIUS.full,
-    paddingHorizontal: SPACING.sm + 2,
-    paddingVertical: 2,
+  badgeText: {
+    fontFamily: FONT.sansBold,
+    fontSize: 11,
+    color: C.brand,
   },
-  savedBadgeText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: COLORS.primary,
+  emptyNote: {
+    fontFamily: FONT.sans,
+    fontSize: FONT.sm,
+    color: C.ink400,
+    lineHeight: FONT.sm * FONT.normal2,
   },
-  savedEmptyNote: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    lineHeight: 22,
+  addRow: {
+    flexDirection: 'row',
+    gap: S[2],
+    marginBottom: S[3],
   },
-  shoppingAddRow: {
-    flexDirection: "row",
-    gap: SPACING.sm,
-    marginBottom: SPACING.md,
-  },
-  shoppingAddInput: {
-    flex: 1,
-    height: 48,
-    backgroundColor: COLORS.card,
-    borderRadius: RADIUS.md,
-    paddingHorizontal: SPACING.lg,
-    fontSize: 15,
-    color: COLORS.text,
+  addInput: {
+    flex: 1, height: 48,
+    backgroundColor: C.bgSurface,
+    borderRadius: R.lg,
+    paddingHorizontal: S[4],
+    fontFamily: FONT.sans,
+    fontSize: FONT.base,
+    color: C.ink700,
     borderWidth: 1.5,
-    borderColor: COLORS.border,
+    borderColor: C.rim,
   },
-  shoppingAddBtn: {
-    paddingHorizontal: SPACING.lg,
+  addBtn: {
     height: 48,
-    backgroundColor: COLORS.primary,
-    borderRadius: RADIUS.md,
-    justifyContent: "center",
-    alignItems: "center",
+    paddingHorizontal: S[4],
+    backgroundColor: C.brand,
+    borderRadius: R.lg,
+    justifyContent: 'center', alignItems: 'center',
+    ...SHADOW.sm,
   },
-  shoppingAddBtnText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#fff",
-  },
-  shoppingListWrap: {
-    gap: SPACING.sm,
+  addBtnText: {
+    fontFamily: FONT.sansBold,
+    fontSize: FONT.sm,
+    color: '#fff',
   },
   shoppingItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: COLORS.card,
-    borderRadius: RADIUS.md,
-    padding: SPACING.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: C.bgSurface,
+    borderRadius: R.lg,
+    paddingHorizontal: S[4],
+    paddingVertical: S[3] + 2,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    gap: SPACING.md,
+    borderColor: C.rim,
+    gap: S[3],
   },
-  shoppingItemChecked: {
-    opacity: 0.6,
-    borderColor: COLORS.success + "30",
+  shoppingItemDone: {
+    opacity: 0.55,
+    borderColor: C.emeraldBg,
   },
-  shoppingCheckbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
-    justifyContent: "center",
-    alignItems: "center",
+  checkbox: {
+    width: 22, height: 22, borderRadius: 11,
+    borderWidth: 1.5, borderColor: C.rim,
+    justifyContent: 'center', alignItems: 'center',
   },
-  shoppingCheckboxChecked: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
+  checkboxDone: {
+    backgroundColor: C.brand, borderColor: C.brand,
   },
-  shoppingItemName: {
-    fontSize: 15,
-    fontWeight: "500",
-    color: COLORS.text,
+  itemName: {
+    fontFamily: FONT.sansMed,
+    fontSize: FONT.base,
+    color: C.ink700,
   },
-  shoppingItemNameChecked: {
-    textDecorationLine: "line-through",
-    color: COLORS.textSecondary,
+  itemNameDone: {
+    textDecorationLine: 'line-through',
+    color: C.ink300,
   },
-  shoppingItemRecipe: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
+  itemRecipe: {
+    fontFamily: FONT.sans,
+    fontSize: FONT.xs,
+    color: C.ink400,
     marginTop: 2,
   },
-  clearCheckedBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: SPACING.sm,
-    paddingVertical: SPACING.md,
-    marginTop: SPACING.sm,
+  clearBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: S[2],
+    paddingVertical: S[3],
+    marginTop: S[2],
   },
-  clearCheckedText: {
-    fontSize: 13,
-    color: COLORS.error,
-    fontWeight: "500",
+  clearText: {
+    fontFamily: FONT.sansMed,
+    fontSize: FONT.sm,
+    color: C.rose,
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: S[3],
   },
   historyItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: COLORS.card,
-    borderRadius: RADIUS.md,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    marginBottom: SPACING.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: C.bgSurface,
+    borderRadius: R.lg,
+    paddingHorizontal: S[4],
+    paddingVertical: S[3],
+    marginBottom: S[2],
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: C.rim,
+    gap: S[3],
   },
-  historyItemLeft: {},
-  historyItemDate: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: COLORS.text,
+  historyDot: {
+    width: 7, height: 7, borderRadius: 4,
+    backgroundColor: C.brand,
   },
-  historyItemCount: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    marginTop: 2,
+  historyDate: {
+    fontFamily: FONT.sansSemiBold,
+    fontSize: FONT.sm, color: C.ink700,
   },
+  historySub: {
+    fontFamily: FONT.sans,
+    fontSize: FONT.xs, color: C.ink400, marginTop: 2,
+  },
+});
 
-  // ── Recipe Detail ──
-  detailNav: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    paddingHorizontal: SPACING.xl,
+// ── Detail Styles ─────────────────────────────────────────────────────────────
+const de = StyleSheet.create({
+  nav: {
+    position: 'absolute', top: 0, left: 0, right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: S[5],
+    zIndex: 10,
   },
-  detailNavBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: "rgba(0,0,0,0.3)",
-    justifyContent: "center",
-    alignItems: "center",
+  navBtn: {
+    width: 42, height: 42, borderRadius: 21,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center', alignItems: 'center',
   },
-  detailCard: {
-    backgroundColor: COLORS.background,
-    paddingHorizontal: SPACING.xl,
-    paddingTop: SPACING.xl,
+  card: {
+    backgroundColor: C.bgBase,
+    paddingHorizontal: S[6],
+    paddingTop: S[5],
   },
-  detailTitle: {
-    fontSize: 26,
-    fontWeight: "800",
-    color: COLORS.text,
-    letterSpacing: -0.7,
-    lineHeight: 33,
-    marginBottom: SPACING.md,
+  tagRow: {
+    flexDirection: 'row',
+    gap: S[2],
+    marginBottom: S[3],
+    flexWrap: 'wrap',
   },
-  detailMetaRow: {
-    flexDirection: "row",
-    gap: SPACING.sm,
-    marginBottom: SPACING.lg,
-    flexWrap: "wrap",
+  tag: {
+    backgroundColor: C.bgSubtle,
+    borderRadius: R.full,
+    paddingHorizontal: S[3],
+    paddingVertical: S[1] + 2,
   },
-  detailTag: {
-    backgroundColor: COLORS.border,
-    borderRadius: RADIUS.full,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs + 2,
+  tagText: {
+    fontFamily: FONT.sansSemiBold,
+    fontSize: FONT.xs, color: C.ink500,
   },
-  detailTagText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: COLORS.textSecondary,
+  title: {
+    fontFamily: FONT.serif,
+    fontSize: FONT['3xl'],
+    color: C.ink900,
+    lineHeight: FONT['3xl'] * FONT.tight2,
+    letterSpacing: FONT.tight,
+    marginBottom: S[4],
   },
-  detailMatchRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.md,
-    marginBottom: SPACING.xl,
-    backgroundColor: COLORS.card,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.lg,
+  matchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: S[3],
+    backgroundColor: C.bgSurface,
+    borderRadius: R.lg,
+    padding: S[4],
+    marginBottom: S[5],
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: C.rim,
   },
-  detailMatchText: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    fontWeight: "500",
+  matchText: {
+    flex: 1,
+    fontFamily: FONT.sansMed,
+    fontSize: FONT.sm, color: C.ink500,
   },
-  detailMissingCard: {
-    backgroundColor: COLORS.warning + "10",
-    borderRadius: RADIUS.lg,
-    padding: SPACING.lg,
-    marginBottom: SPACING.xl,
+  readyPill: {
+    backgroundColor: C.emeraldBg,
+    borderRadius: R.full,
+    paddingHorizontal: S[3],
+    paddingVertical: 4,
+  },
+  readyPillText: {
+    fontFamily: FONT.sansBold,
+    fontSize: FONT.xs, color: C.emeraldText,
+  },
+  missingCard: {
+    backgroundColor: C.amberBg,
+    borderRadius: R.xl,
+    padding: S[4],
+    marginBottom: S[5],
     borderWidth: 1,
-    borderColor: COLORS.warning + "30",
+    borderColor: `${C.amber}30`,
   },
-  detailMissingHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.sm,
-    marginBottom: SPACING.md,
+  missingHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: S[2], marginBottom: S[3],
   },
-  detailMissingTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: COLORS.warning,
+  missingTitle: {
+    fontFamily: FONT.sansBold,
+    fontSize: FONT.sm, color: C.amberText,
   },
-  missingChip: {
-    backgroundColor: COLORS.card,
-    borderRadius: RADIUS.full,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs + 2,
+  missingPill: {
+    backgroundColor: C.bgSurface,
+    borderRadius: R.full,
+    paddingHorizontal: S[3],
+    paddingVertical: S[1] + 2,
     borderWidth: 1,
-    borderColor: COLORS.warning + "40",
+    borderColor: `${C.amber}40`,
   },
-  missingChipText: {
-    fontSize: 13,
-    color: COLORS.text,
-    fontWeight: "500",
+  missingPillText: {
+    fontFamily: FONT.sansMed,
+    fontSize: FONT.sm, color: C.ink700,
   },
-  addToListInlineBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.sm,
+  addToListBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: S[2],
   },
-  addToListInlineText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: COLORS.primary,
+  addToListText: {
+    fontFamily: FONT.sansSemiBold,
+    fontSize: FONT.sm, color: C.brand,
   },
-  detailSection: {
-    marginBottom: SPACING.xl,
+  section: { marginBottom: S[6] },
+  sectionTitle: {
+    fontFamily: FONT.sansBold,
+    fontSize: FONT.md,
+    color: C.ink900,
+    letterSpacing: FONT.snug,
+    marginBottom: S[3],
   },
-  detailSectionTitle: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: COLORS.text,
-    letterSpacing: -0.3,
-    marginBottom: SPACING.md,
+  ingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: S[3],
+    gap: S[3],
   },
-  detailIngredientRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-    gap: SPACING.md,
+  ingRowBorder: {
+    borderBottomWidth: 1, borderBottomColor: C.rimSubtle,
   },
-  detailIngredientMeasure: {
-    width: 90,
-    fontSize: 13,
-    fontWeight: "600",
-    color: COLORS.textSecondary,
+  ingStatus: {
+    width: 22, height: 22, borderRadius: 11,
+    justifyContent: 'center', alignItems: 'center',
   },
-  detailIngredientName: {
+  ingMeasure: {
+    width: 88,
+    fontFamily: FONT.sansSemiBold,
+    fontSize: FONT.sm, color: C.ink400,
+  },
+  ingName: {
     flex: 1,
-    fontSize: 15,
-    color: COLORS.text,
+    fontFamily: FONT.sans,
+    fontSize: FONT.base, color: C.ink700,
   },
-  detailStepRow: {
-    flexDirection: "row",
-    marginBottom: SPACING.lg,
-    gap: SPACING.md,
+  stepRow: {
+    flexDirection: 'row',
+    gap: S[3],
+    marginBottom: S[4],
   },
-  detailStepNum: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: COLORS.primary,
-    justifyContent: "center",
-    alignItems: "center",
-    flexShrink: 0,
-    marginTop: 2,
+  stepNum: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: C.brand,
+    justifyContent: 'center', alignItems: 'center',
+    flexShrink: 0, marginTop: 2,
   },
-  detailStepNumText: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: "#fff",
+  stepNumText: {
+    fontFamily: FONT.sansBold,
+    fontSize: FONT.xs, color: '#fff',
   },
-  detailStepText: {
+  stepText: {
     flex: 1,
-    fontSize: 15,
-    color: COLORS.text,
-    lineHeight: 24,
+    fontFamily: FONT.sans,
+    fontSize: FONT.base, color: C.ink700,
+    lineHeight: FONT.base * FONT.loose,
   },
-  detailActions: {
-    gap: SPACING.md,
-    marginBottom: SPACING.xl,
+  actions: {
+    gap: S[3], marginBottom: S[6],
   },
-  startCookingBtn: {
-    borderRadius: RADIUS.full,
-    overflow: "hidden",
-    ...SHADOWS.md,
+  cookBtn: {
+    flexDirection: 'row',
+    alignItems: 'center', justifyContent: 'center',
+    gap: S[2],
+    paddingVertical: S[4] + 2,
+    borderRadius: R.full,
+    ...SHADOW.md,
   },
-  startCookingBtnGradient: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: SPACING.sm,
-    paddingVertical: SPACING.lg + 2,
+  cookBtnText: {
+    fontFamily: FONT.sansBold,
+    fontSize: FONT.md, color: '#fff',
+    letterSpacing: FONT.snug,
   },
-  startCookingBtnText: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: "#fff",
-    letterSpacing: -0.2,
+  secActions: {
+    flexDirection: 'row', gap: S[2],
   },
-  detailSecondaryActions: {
-    flexDirection: "row",
-    gap: SPACING.sm,
+  secBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center', justifyContent: 'center',
+    gap: S[2],
+    paddingVertical: S[4],
+    borderRadius: R.lg,
+    backgroundColor: C.bgSurface,
+    borderWidth: 1.5, borderColor: C.rim,
   },
-  detailSecondaryBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: SPACING.sm,
-    paddingVertical: SPACING.lg,
-    borderRadius: RADIUS.lg,
-    backgroundColor: COLORS.card,
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
+  secBtnText: {
+    fontFamily: FONT.sansSemiBold,
+    fontSize: FONT.base, color: C.brand,
   },
-  detailSecondaryBtnText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: COLORS.primary,
-  },
+});
 
-  // ── Cook Mode ──
-  cookScreen: {
+// ── Cook Mode Styles ──────────────────────────────────────────────────────────
+const cm = StyleSheet.create({
+  root: {
+    flex: 1, backgroundColor: C.dark,
+  },
+  topBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: S[6],
+    paddingVertical: S[4],
+  },
+  stepLabel: {
+    fontFamily: FONT.sansBold,
+    fontSize: FONT.xs, color: C.darkSage,
+    letterSpacing: FONT.wider,
+  },
+  closeBtn: {
+    width: 34, height: 34, borderRadius: 17,
+    backgroundColor: 'rgba(124,184,152,0.1)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  progressTrack: {
+    marginHorizontal: S[6],
+    height: 2,
+    backgroundColor: 'rgba(124,184,152,0.15)',
+    borderRadius: 1,
+    overflow: 'hidden',
+    marginBottom: S[3],
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: C.darkSage,
+    borderRadius: 1,
+  },
+  recipeName: {
+    fontFamily: FONT.sansMed,
+    fontSize: FONT.xs,
+    color: C.darkTextSub,
+    paddingHorizontal: S[6],
+    marginBottom: S[4],
+    textTransform: 'uppercase',
+    letterSpacing: FONT.wider,
+  },
+  dotsRow: {
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: S[6],
+    marginBottom: S[6],
+    flexWrap: 'wrap',
+  },
+  dot: {
+    width: 6, height: 6, borderRadius: 3,
+    backgroundColor: 'rgba(124,184,152,0.2)',
+  },
+  dotActive: {
+    backgroundColor: C.darkSage,
+    width: 18,
+  },
+  dotDone: {
+    backgroundColor: `${C.darkSage}50`,
+  },
+  stepContent: {
     flex: 1,
-    backgroundColor: COLORS.darkBg,
+    paddingHorizontal: S[6],
+    justifyContent: 'center',
   },
-  cookTopBar: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: SPACING.xl,
-    paddingVertical: SPACING.lg,
+  stepText: {
+    fontFamily: FONT.sansMed,
+    fontSize: FONT.xl + 2,
+    color: C.darkText,
+    lineHeight: (FONT.xl + 2) * FONT.loose,
+    letterSpacing: FONT.snug,
   },
-  cookStepCounter: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: COLORS.darkAccent,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
+  navRow: {
+    flexDirection: 'row',
+    paddingHorizontal: S[6],
+    paddingTop: S[5],
+    gap: S[3],
   },
-  cookExitIconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "rgba(168,197,176,0.1)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  cookProgressTrack: {
-    marginHorizontal: SPACING.xl,
-    height: 3,
-    backgroundColor: "rgba(168,197,176,0.15)",
-    borderRadius: 2,
-    overflow: "hidden",
-    marginBottom: SPACING.lg,
-  },
-  cookProgressBar: {
-    height: "100%",
-    backgroundColor: COLORS.darkAccent,
-    borderRadius: 2,
-  },
-  cookRecipeName: {
-    fontSize: 13,
-    color: COLORS.darkTextSub,
-    paddingHorizontal: SPACING.xl,
-    marginBottom: SPACING.xxl,
-    fontWeight: "500",
-  },
-  cookStepContent: {
+  navBtnWrap: { flex: 1 },
+  navBtnSecondary: {
     flex: 1,
-    paddingHorizontal: SPACING.xl,
-    justifyContent: "center",
+    flexDirection: 'row',
+    alignItems: 'center', justifyContent: 'center',
+    gap: S[2],
+    paddingVertical: S[4],
+    borderRadius: R.full,
+    backgroundColor: 'rgba(124,184,152,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(124,184,152,0.15)',
   },
-  cookStepText: {
-    fontSize: 24,
-    fontWeight: "600",
-    color: COLORS.darkText,
-    lineHeight: 36,
-    letterSpacing: -0.3,
+  navBtnSecondaryText: {
+    fontFamily: FONT.sansSemiBold,
+    fontSize: FONT.base, color: C.darkSage,
   },
-  cookNavRow: {
-    flexDirection: "row",
-    paddingHorizontal: SPACING.xl,
-    paddingTop: SPACING.xl,
-    gap: SPACING.md,
+  navBtnPrimary: {
+    flexDirection: 'row',
+    alignItems: 'center', justifyContent: 'center',
+    gap: S[2],
+    paddingVertical: S[4],
+    borderRadius: R.full,
+    ...SHADOW.md,
   },
-  cookNavBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: SPACING.sm,
-    paddingVertical: SPACING.lg,
-    borderRadius: RADIUS.full,
+  navBtnPrimaryText: {
+    fontFamily: FONT.sansBold,
+    fontSize: FONT.md, color: '#fff',
   },
-  cookNavBtnSecondary: {
-    flex: 1,
-    backgroundColor: "rgba(168,197,176,0.1)",
+  exitBtn: {
+    marginHorizontal: S[6],
+    paddingVertical: S[4],
+    borderRadius: R.full,
+    backgroundColor: 'rgba(124,184,152,0.1)',
+    alignItems: 'center',
   },
-  cookNavBtnSecondaryText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: COLORS.darkAccent,
+  exitBtnText: {
+    fontFamily: FONT.sansSemiBold,
+    fontSize: FONT.base, color: C.darkSage,
   },
-  cookNavBtnPrimary: {
-    flex: 2,
-    backgroundColor: COLORS.primary,
-  },
-  cookNavBtnPrimaryText: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#fff",
-  },
-  cookExitBtn: {
-    marginHorizontal: SPACING.xl,
-    marginTop: SPACING.xl,
-    paddingVertical: SPACING.lg,
-    borderRadius: RADIUS.full,
-    backgroundColor: "rgba(168,197,176,0.15)",
-    alignItems: "center",
-  },
-  cookExitBtnText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: COLORS.darkAccent,
-  },
+});
 
-  // ── Modal ──
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.55)",
-    justifyContent: "center",
-    padding: SPACING.xl,
-  },
-  modalContent: {
-    backgroundColor: COLORS.card,
-    borderRadius: RADIUS.xxl,
-    padding: SPACING.xl,
-    ...SHADOWS.lg,
-  },
-  modalHeader: {
-    alignItems: "center",
-    marginBottom: SPACING.xl,
-  },
-  modalIconWrap: {
-    width: 52,
-    height: 52,
-    borderRadius: RADIUS.lg,
-    backgroundColor: COLORS.primary + "12",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: SPACING.lg,
-  },
-  modalTitle: {
-    fontSize: 19,
-    fontWeight: "700",
-    color: COLORS.text,
-    textAlign: "center",
-    letterSpacing: -0.3,
-  },
-  modalSubtitle: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    textAlign: "center",
-    marginTop: SPACING.sm,
-  },
-  modalInput: {
-    height: 52,
-    backgroundColor: COLORS.background,
-    borderRadius: RADIUS.md,
-    paddingHorizontal: SPACING.lg,
-    fontSize: 15,
-    color: COLORS.text,
-    marginBottom: SPACING.md,
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
-  },
-  modalButtons: {
-    flexDirection: "row",
-    gap: SPACING.sm,
-    marginTop: SPACING.sm,
-  },
-  modalDestructiveBtn: {
-    flex: 1,
-    height: 50,
-    borderRadius: RADIUS.md,
-    backgroundColor: COLORS.error + "12",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  modalDestructiveBtnText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: COLORS.error,
-  },
-  modalCancelBtn: {
-    flex: 1,
-    height: 50,
-    borderRadius: RADIUS.md,
-    backgroundColor: COLORS.background,
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
-  },
-  modalCancelText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: COLORS.textSecondary,
-  },
-  modalSaveBtn: {
-    flex: 1,
-    height: 50,
-    borderRadius: RADIUS.md,
-    backgroundColor: COLORS.primary,
-    justifyContent: "center",
-    alignItems: "center",
-    ...SHADOWS.sm,
-  },
-  modalSaveText: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#fff",
-  },
-
-  // ── Tab Bar ──
-  tabBarDark: {
-    position: "absolute",
-    backgroundColor: COLORS.darkGlass,
+// ── Tab Bar Styles ────────────────────────────────────────────────────────────
+const tb = StyleSheet.create({
+  dark: {
+    position: 'absolute',
+    backgroundColor: 'rgba(8,13,10,0.96)',
     borderTopWidth: 0,
     height: 84,
-    paddingBottom: 24,
-    paddingTop: SPACING.sm,
-    borderTopColor: "rgba(168,197,176,0.1)",
-    shadowColor: "#000",
+    paddingTop: S[2],
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 14,
+    shadowOpacity: 0.35,
+    shadowRadius: 24,
+    elevation: 16,
+    borderTopColor: 'rgba(124,184,152,0.08)',
   },
-  tabBarLight: {
-    position: "absolute",
-    backgroundColor: COLORS.glass,
-    borderTopWidth: 0,
+  light: {
+    position: 'absolute',
+    backgroundColor: 'rgba(245,241,234,0.96)',
+    borderTopWidth: 1,
+    borderTopColor: C.rimSubtle,
     height: 84,
-    paddingBottom: 24,
-    paddingTop: SPACING.sm,
-    shadowColor: "#16120C",
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.08,
+    paddingTop: S[2],
+    shadowColor: '#1A0F00',
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.07,
     shadowRadius: 20,
-    elevation: 14,
-    borderTopLeftRadius: RADIUS.xxl,
-    borderTopRightRadius: RADIUS.xxl,
+    elevation: 12,
+    borderTopLeftRadius: R['2xl'],
+    borderTopRightRadius: R['2xl'],
   },
-  tabBarLabel: {
+  label: {
+    fontFamily: FONT.sansSemiBold,
     fontSize: 10,
-    fontWeight: "600",
     marginTop: 2,
   },
 });
