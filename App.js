@@ -1,14 +1,14 @@
 /**
- * FoodLens — Premium React Native App
- * Stack: Expo SDK 54 · Reanimated 3 · Inter + Playfair Display · expo-haptics
+ * FoodLens — "Everyday Kitchen" Redesign
+ * Stack: Expo SDK 54 · React Native Animated · System fonts · expo-haptics
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet, Text, View, Image, TouchableOpacity, Alert,
   ScrollView, TextInput, Modal, KeyboardAvoidingView,
-  Platform, Share, Dimensions, Linking, PanResponder,
-  FlatList,
+  Platform, Share, Dimensions, PanResponder, FlatList, Animated,
+  Linking,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
@@ -17,30 +17,16 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import {
   SafeAreaProvider, useSafeAreaInsets,
-  SafeAreaView as SAV,
 } from 'react-native-safe-area-context';
-import Animated, {
-  useSharedValue, useAnimatedStyle,
-  withSpring, withTiming, withDelay, withRepeat, withSequence,
-  interpolate, Extrapolation, runOnJS,
-} from 'react-native-reanimated';
-import {
-  useFonts,
-  Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold,
-} from '@expo-google-fonts/inter';
-import {
-  PlayfairDisplay_700Bold, PlayfairDisplay_600SemiBold,
-} from '@expo-google-fonts/playfair-display';
 
-import { C, FONT, S, R, SHADOW, SPRING, TIMING } from './src/design';
+import { C, FONT, S, R, SHADOW } from './src/design';
 import {
   buildServerUrl, humanizeApiError,
   formatScanDate, getIngredientCategory, getCategoryMeta,
-  getMatchDots, pluralize, capitalize,
+  pluralize, capitalize,
 } from './src/utils';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -49,12 +35,12 @@ const { width: W, height: H } = Dimensions.get('window');
 const SERVER_URL = buildServerUrl();
 
 const KEYS = {
-  apiKey:   '@openai_api_key',
-  favorites:'@favorite_recipes',
-  history:  '@scan_history',
+  apiKey:      '@openai_api_key',
+  favorites:   '@favorite_recipes',
+  history:     '@scan_history',
   ingredients: '@current_ingredients',
-  recipes:  '@current_recipes',
-  shopping: '@shopping_list',
+  recipes:     '@current_recipes',
+  shopping:    '@shopping_list',
 };
 
 const Stack = createNativeStackNavigator();
@@ -69,22 +55,25 @@ const haptic = {
   error:   () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error),
 };
 
-// ─── Primitive: Pressable with spring scale ───────────────────────────────────
+// ─── Press — scale feedback with RN Animated ─────────────────────────────────
 
 function Press({ onPress, style, children, scale = 0.97, hapticType = 'light', disabled }) {
-  const s = useSharedValue(1);
-  const anim = useAnimatedStyle(() => ({ transform: [{ scale: s.value }] }));
+  const s = useRef(new Animated.Value(1)).current;
 
   return (
-    <Animated.View style={[anim, style]}>
+    <Animated.View style={[{ transform: [{ scale: s }] }, style]}>
       <TouchableOpacity
         onPress={() => {
           if (disabled) return;
           if (hapticType) haptic[hapticType]?.();
           onPress?.();
         }}
-        onPressIn={() => { s.value = withSpring(scale, SPRING.snappy); }}
-        onPressOut={() => { s.value = withSpring(1, SPRING.snappy); }}
+        onPressIn={() =>
+          Animated.spring(s, { toValue: scale, useNativeDriver: true, speed: 50, bounciness: 4 }).start()
+        }
+        onPressOut={() =>
+          Animated.spring(s, { toValue: 1, useNativeDriver: true, speed: 50, bounciness: 4 }).start()
+        }
         activeOpacity={1}
         disabled={disabled}
       >
@@ -94,40 +83,39 @@ function Press({ onPress, style, children, scale = 0.97, hapticType = 'light', d
   );
 }
 
-// ─── Skeleton Pulse ───────────────────────────────────────────────────────────
+// ─── Three Dots — iMessage-style loading indicator ───────────────────────────
 
-function Skeleton({ width, height, radius = R.md, style }) {
-  const opacity = useSharedValue(0.5);
+function ThreeDots() {
+  const vals = useRef([0, 1, 2].map(() => new Animated.Value(0.3))).current;
 
   useEffect(() => {
-    opacity.value = withRepeat(
-      withSequence(
-        withTiming(1, { duration: 700 }),
-        withTiming(0.4, { duration: 700 })
-      ), -1
-    );
+    let running = true;
+
+    function cycle() {
+      if (!running) return;
+      Animated.sequence([
+        Animated.timing(vals[0], { toValue: 1,   duration: 200, useNativeDriver: true }),
+        Animated.timing(vals[0], { toValue: 0.3, duration: 200, useNativeDriver: true }),
+        Animated.timing(vals[1], { toValue: 1,   duration: 200, useNativeDriver: true }),
+        Animated.timing(vals[1], { toValue: 0.3, duration: 200, useNativeDriver: true }),
+        Animated.timing(vals[2], { toValue: 1,   duration: 200, useNativeDriver: true }),
+        Animated.timing(vals[2], { toValue: 0.3, duration: 200, useNativeDriver: true }),
+        Animated.delay(200),
+      ]).start(() => { if (running) cycle(); });
+    }
+    cycle();
+
+    return () => { running = false; };
   }, []);
 
-  const anim = useAnimatedStyle(() => ({ opacity: opacity.value }));
   return (
-    <Animated.View
-      style={[{ width, height, borderRadius: radius, backgroundColor: C.rim }, anim, style]}
-    />
-  );
-}
-
-// ─── Match Dots ───────────────────────────────────────────────────────────────
-
-function MatchDots({ matchPercent, size = 8 }) {
-  const filled = getMatchDots(matchPercent);
-  return (
-    <View style={{ flexDirection: 'row', gap: 4, alignItems: 'center' }}>
-      {[0,1,2,3,4].map(i => (
-        <View
+    <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+      {vals.map((v, i) => (
+        <Animated.View
           key={i}
           style={{
-            width: size, height: size, borderRadius: size / 2,
-            backgroundColor: i < filled ? C.emerald : C.emeraldDim,
+            width: 8, height: 8, borderRadius: 4,
+            backgroundColor: C.accent, opacity: v,
           }}
         />
       ))}
@@ -137,22 +125,18 @@ function MatchDots({ matchPercent, size = 8 }) {
 
 // ─── Empty State ──────────────────────────────────────────────────────────────
 
-function EmptyState({ icon, title, subtitle, action, onAction, dark }) {
+function EmptyState({ icon, title, subtitle, action, onAction }) {
   return (
-    <View style={[ui.emptyWrap]}>
-      <View style={[ui.emptyIcon, dark && { backgroundColor: 'rgba(124,184,152,0.12)' }]}>
-        <Ionicons name={icon} size={34} color={dark ? C.darkSage : C.brand} />
+    <View style={ui.emptyWrap}>
+      <View style={ui.emptyIconBg}>
+        <Ionicons name={icon} size={28} color={C.inkTer} />
       </View>
-      <Text style={[ui.emptyTitle, dark && { color: C.darkText, fontFamily: FONT.sans }]}>
-        {title}
-      </Text>
-      <Text style={[ui.emptySub, dark && { color: C.darkTextSub }]}>
-        {subtitle}
-      </Text>
+      <Text style={ui.emptyTitle}>{title}</Text>
+      <Text style={ui.emptySub}>{subtitle}</Text>
       {action && onAction && (
-        <Press onPress={onAction} style={ui.emptyBtn} hapticType="medium">
-          <View style={[ui.emptyBtnInner, dark && { backgroundColor: C.darkSage }]}>
-            <Text style={[ui.emptyBtnText, dark && { color: C.dark }]}>{action}</Text>
+        <Press onPress={onAction} style={{ marginTop: S[5] }} hapticType="medium">
+          <View style={ui.emptyBtn}>
+            <Text style={ui.emptyBtnText}>{action}</Text>
           </View>
         </Press>
       )}
@@ -160,112 +144,47 @@ function EmptyState({ icon, title, subtitle, action, onAction, dark }) {
   );
 }
 
-// ─── Section Label ────────────────────────────────────────────────────────────
+// ─── Section Header ───────────────────────────────────────────────────────────
 
-function SectionLabel({ text, right }) {
+function SectionHeader({ text, right }) {
   return (
-    <View style={ui.sectionLabelRow}>
-      <Text style={ui.sectionLabel}>{text}</Text>
+    <View style={ui.sectionHeaderRow}>
+      <Text style={ui.sectionHeaderText}>{text.toUpperCase()}</Text>
       {right}
     </View>
   );
 }
 
-// ─── Pulsing Ring (ScanScreen) ────────────────────────────────────────────────
-
-function PulseRing({ delay = 0, size = 140, color = C.darkSage }) {
-  const scale   = useSharedValue(0.7);
-  const opacity = useSharedValue(0.5);
-
-  useEffect(() => {
-    scale.value = withDelay(delay, withRepeat(
-      withSequence(
-        withTiming(1.9, { duration: 2000 }),
-        withTiming(0.7, { duration: 0 })
-      ), -1
-    ));
-    opacity.value = withDelay(delay, withRepeat(
-      withSequence(
-        withTiming(0, { duration: 2000 }),
-        withTiming(0.5, { duration: 0 })
-      ), -1
-    ));
-  }, []);
-
-  const anim = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-    opacity: opacity.value,
-  }));
-
-  return (
-    <Animated.View
-      pointerEvents="none"
-      style={[{
-        position: 'absolute', width: size, height: size, borderRadius: size / 2,
-        borderWidth: 1, borderColor: color,
-      }, anim]}
-    />
-  );
-}
-
-// ─── Stagger Item (list entrance) ────────────────────────────────────────────
-
-function StaggerItem({ index, children }) {
-  const opacity = useSharedValue(0);
-  const ty      = useSharedValue(18);
-
-  useEffect(() => {
-    const d = Math.min(index * 55, 600);
-    opacity.value = withDelay(d, withTiming(1, { duration: TIMING.normal }));
-    ty.value      = withDelay(d, withSpring(0, SPRING.gentle));
-  }, []);
-
-  const anim = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-    transform: [{ translateY: ty.value }],
-  }));
-
-  return <Animated.View style={anim}>{children}</Animated.View>;
-}
-
-// ─── Recipe Card (full-width, Results screen) ─────────────────────────────────
+// ─── Recipe Card ──────────────────────────────────────────────────────────────
 
 function RecipeCard({ recipe, onPress, onFavorite, isFavorited }) {
-  const isReady  = recipe.missing_count === 0;
-  const total    = (recipe.matched_count || 0) + (recipe.missing_count || 0);
+  const isReady = recipe.missing_count === 0;
+  const total   = (recipe.matched_count || 0) + (recipe.missing_count || 0);
+  const filled  = Math.min(5, Math.max(0, Math.round((recipe.match_percent || 0) / 20)));
 
   return (
     <Press onPress={onPress} scale={0.985} style={ui.card}>
       {/* Image */}
-      <View style={ui.cardImageWrap}>
+      <View style={ui.cardImgWrap}>
         {recipe.image ? (
-          <Image source={{ uri: recipe.image }} style={ui.cardImage} />
+          <Image source={{ uri: recipe.image }} style={ui.cardImg} />
         ) : (
-          <View style={[ui.cardImagePlaceholder]}>
-            <Text style={{ fontSize: 56 }}>{recipe.emoji || '🍽️'}</Text>
+          <View style={ui.cardImgPlaceholder}>
+            <Text style={{ fontSize: 48 }}>{recipe.emoji || '🍽️'}</Text>
           </View>
         )}
-
-        {/* Gradient overlay */}
-        <LinearGradient
-          colors={['transparent', 'rgba(10,15,12,0.55)']}
-          style={ui.cardGradient}
-        />
-
-        {/* Ready badge on image */}
-        {isReady && (
-          <View style={ui.cardReadyBadge}>
-            <Ionicons name="checkmark-circle" size={12} color="#fff" />
-            <Text style={ui.cardReadyText}>Ready to cook</Text>
-          </View>
-        )}
-
-        {/* Cuisine tag */}
-        {(recipe.area || recipe.category) && (
-          <View style={ui.cardCuisineTag}>
-            <Text style={ui.cardCuisineText}>{recipe.area || recipe.category}</Text>
-          </View>
-        )}
+        {/* Favorite */}
+        <TouchableOpacity
+          style={ui.cardFavBtn}
+          onPress={e => { e.stopPropagation(); haptic.light(); onFavorite(recipe); }}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Ionicons
+            name={isFavorited ? 'heart' : 'heart-outline'}
+            size={20}
+            color={isFavorited ? C.danger : '#fff'}
+          />
+        </TouchableOpacity>
       </View>
 
       {/* Content */}
@@ -273,42 +192,38 @@ function RecipeCard({ recipe, onPress, onFavorite, isFavorited }) {
         <Text style={ui.cardTitle} numberOfLines={2}>{recipe.name}</Text>
 
         <View style={ui.cardMetaRow}>
-          <MatchDots matchPercent={recipe.match_percent} />
+          {/* Match dots as unicode */}
+          <Text style={ui.cardDots}>
+            {[0,1,2,3,4].map(i => (
+              <Text key={i} style={{ color: i < filled ? C.accent : C.accentDim }}>
+                {i < filled ? '●' : '○'}
+              </Text>
+            ))}
+          </Text>
           {total > 0 && (
-            <Text style={ui.cardMetaText}>
-              {recipe.matched_count}/{total} ingredients
-            </Text>
+            <Text style={ui.cardMetaText}>{recipe.matched_count}/{total} ingredients</Text>
           )}
         </View>
 
-        {recipe.missing_count > 0 && (
-          <Text style={ui.cardMissing}>
-            {pluralize(recipe.missing_count, 'ingredient')} missing
+        {/* Tags row */}
+        <View style={ui.cardTagRow}>
+          {recipe.area && <View style={ui.cardTag}><Text style={ui.cardTagText}>{recipe.area}</Text></View>}
+          {recipe.category && <View style={ui.cardTag}><Text style={ui.cardTagText}>{recipe.category}</Text></View>}
+          {isReady && <View style={[ui.cardTag, ui.cardTagReady]}><Text style={[ui.cardTagText, { color: C.successText }]}>Ready</Text></View>}
+        </View>
+
+        {recipe.missing_count > 0 && recipe.missing_ingredients?.length > 0 && (
+          <Text style={ui.cardMissing} numberOfLines={1}>
+            Missing: {recipe.missing_ingredients.slice(0, 3).join(', ')}
+            {recipe.missing_ingredients.length > 3 ? '…' : ''}
           </Text>
         )}
       </View>
-
-      {/* Heart */}
-      <TouchableOpacity
-        style={ui.cardHeart}
-        onPress={(e) => {
-          e.stopPropagation();
-          haptic.light();
-          onFavorite(recipe);
-        }}
-        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-      >
-        <Ionicons
-          name={isFavorited ? 'heart' : 'heart-outline'}
-          size={22}
-          color={isFavorited ? C.rose : C.ink300}
-        />
-      </TouchableOpacity>
     </Press>
   );
 }
 
-// ─── Small grid card (Saved screen) ──────────────────────────────────────────
+// ─── Grid Card (Saved Favorites) ──────────────────────────────────────────────
 
 function GridCard({ recipe, onPress }) {
   return (
@@ -316,11 +231,12 @@ function GridCard({ recipe, onPress }) {
       {recipe.image ? (
         <Image source={{ uri: recipe.image }} style={ui.gridCardImg} />
       ) : (
-        <View style={ui.gridCardPlaceholder}>
-          <Text style={{ fontSize: 30 }}>{recipe.emoji || '🍽️'}</Text>
+        <View style={[ui.gridCardImg, ui.gridCardPlaceholder]}>
+          <Text style={{ fontSize: 28 }}>{recipe.emoji || '🍽️'}</Text>
         </View>
       )}
-      <View style={ui.gridCardBody}>
+      {/* Gradient overlay — text on image */}
+      <View style={ui.gridCardOverlay}>
         <Text style={ui.gridCardTitle} numberOfLines={2}>{recipe.name}</Text>
       </View>
     </Press>
@@ -331,17 +247,17 @@ function GridCard({ recipe, onPress }) {
 
 function ApiKeyModal({ visible, onClose, value, onChange, onSave }) {
   return (
-    <Modal visible={visible} transparent animationType="fade">
+    <Modal visible={visible} transparent animationType="slide">
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={ui.modalOverlay}
       >
-        <Animated.View style={ui.modalSheet}>
-          <View style={ui.modalDragHandle} />
+        <View style={ui.modalSheet}>
+          <View style={ui.modalHandle} />
 
           <View style={ui.modalIconRow}>
             <View style={ui.modalIconBg}>
-              <Ionicons name="key-outline" size={22} color={C.brand} />
+              <Ionicons name="key-outline" size={22} color={C.accent} />
             </View>
           </View>
           <Text style={ui.modalTitle}>OpenAI API Key</Text>
@@ -350,7 +266,7 @@ function ApiKeyModal({ visible, onClose, value, onChange, onSave }) {
           <TextInput
             style={ui.input}
             placeholder="sk-…"
-            placeholderTextColor={C.ink300}
+            placeholderTextColor={C.inkTer}
             value={value}
             onChangeText={onChange}
             secureTextEntry
@@ -364,12 +280,12 @@ function ApiKeyModal({ visible, onClose, value, onChange, onSave }) {
               </View>
             </Press>
             <Press onPress={onSave} style={{ flex: 1 }} disabled={!value} hapticType="medium">
-              <View style={[ui.btnPrimary, !value && { opacity: 0.45 }]}>
-                <Text style={ui.btnPrimaryText}>Save Key</Text>
+              <View style={[ui.btnAccent, !value && { opacity: 0.4 }]}>
+                <Text style={ui.btnAccentText}>Save Key</Text>
               </View>
             </Press>
           </View>
-        </Animated.View>
+        </View>
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -379,47 +295,28 @@ function ApiKeyModal({ visible, onClose, value, onChange, onSave }) {
 
 function ScanScreen({ navigation }) {
   const [ingredients, setIngredients] = useState([]);
-  const [recipes, setRecipes] = useState([]);
-  const [lastDate, setLastDate] = useState(null);
-  const [phase, setPhase] = useState('idle'); // idle | analyzing | found | searching
-  const [apiKey, setApiKey] = useState('');
+  const [recipes, setRecipes]         = useState([]);
+  const [lastDate, setLastDate]       = useState(null);
+  const [phase, setPhase]             = useState('idle'); // idle | analyzing | found | searching
+  const [apiKey, setApiKey]           = useState('');
   const [showKeyModal, setShowKeyModal] = useState(false);
-  const [tempKey, setTempKey] = useState('');
-  const [visibleCount, setVisibleCount] = useState(0);
+  const [tempKey, setTempKey]         = useState('');
+  const insets = useSafeAreaInsets();
 
-  const progressVal = useSharedValue(0);
-  const progressAnim = useAnimatedStyle(() => ({
-    width: `${interpolate(progressVal.value, [0, 1], [0, 100], Extrapolation.CLAMP)}%`,
-  }));
+  const isLoading  = phase !== 'idle';
+  const hasResults = recipes.length > 0 && !isLoading;
 
-  const isLoading   = phase !== 'idle';
-  const hasResults  = recipes.length > 0 && !isLoading;
+  const loadingLabel =
+    phase === 'analyzing' ? 'Scanning ingredients…'
+    : phase === 'found'   ? `Found ${ingredients.length} ingredients!`
+    : phase === 'searching' ? 'Finding recipes…'
+    : '';
 
   useEffect(() => { loadData(); }, []);
   useEffect(() => {
     const unsub = navigation.addListener('focus', loadData);
     return unsub;
   }, [navigation]);
-
-  // Stagger ingredient reveal during "found" phase
-  useEffect(() => {
-    if (phase === 'found' && ingredients.length > 0) {
-      setVisibleCount(0);
-      const t = setInterval(() => {
-        setVisibleCount(c => {
-          if (c >= ingredients.length) { clearInterval(t); return c; }
-          return c + 1;
-        });
-      }, 110);
-      return () => clearInterval(t);
-    }
-  }, [phase, ingredients.length]);
-
-  const animProgress = useCallback((to, duration) => {
-    return new Promise(res => {
-      progressVal.value = withTiming(to, { duration }, () => runOnJS(res)());
-    });
-  }, []);
 
   async function loadData() {
     try {
@@ -452,7 +349,10 @@ function ScanScreen({ navigation }) {
     const perm = useCamera
       ? await ImagePicker.requestCameraPermissionsAsync()
       : await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) { Alert.alert('Permission Required', 'Please allow access to continue.'); return; }
+    if (!perm.granted) {
+      Alert.alert('Permission Required', 'Please allow access to continue.');
+      return;
+    }
 
     const result = useCamera
       ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [4, 3], quality: 0.8, base64: true })
@@ -465,9 +365,6 @@ function ScanScreen({ navigation }) {
 
   async function analyzeImage(base64, uri) {
     setPhase('analyzing');
-    progressVal.setValue(0);
-    animateProgressBackground(0.55, 12000);
-
     try {
       const r = await fetch(`${SERVER_URL}/analyze`, {
         method: 'POST',
@@ -491,26 +388,17 @@ function ScanScreen({ navigation }) {
 
       setPhase('found');
       haptic.success();
-      progressVal.value = withTiming(0.62, { duration: 300 });
 
       if (newIng.length > 0) await searchRecipes(newIng);
-      else { setPhase('idle'); progressVal.value = withTiming(0, { duration: 200 }); }
+      else setPhase('idle');
     } catch (e) {
       Alert.alert('Analysis Failed', e.message || 'Could not analyze image.');
       setPhase('idle');
-      progressVal.value = withTiming(0, { duration: 200 });
     }
-  }
-
-  // Non-awaited progress background animation
-  function animateProgressBackground(target, duration) {
-    progressVal.value = withTiming(target, { duration });
   }
 
   async function searchRecipes(ing) {
     setPhase('searching');
-    animateProgressBackground(0.92, 15000);
-
     try {
       const r = await fetch(`${SERVER_URL}/search-recipes`, {
         method: 'POST',
@@ -527,17 +415,13 @@ function ScanScreen({ navigation }) {
       setRecipes(newRec);
       await AsyncStorage.setItem(KEYS.recipes, JSON.stringify({ recipes: newRec, categorized: data.categorized || {} }));
 
-      progressVal.value = withTiming(1, { duration: 400 });
-
       setTimeout(() => {
         setPhase('idle');
-        progressVal.value = withTiming(0, { duration: 200 });
         if (newRec.length > 0) navigation.navigate('Results', { recipes: newRec, ingredients: ing });
-      }, 500);
+      }, 400);
     } catch (e) {
       Alert.alert('Search Failed', e.message || 'Could not find recipes.');
       setPhase('idle');
-      progressVal.value = withTiming(0, { duration: 200 });
     }
   }
 
@@ -547,134 +431,68 @@ function ScanScreen({ navigation }) {
     await AsyncStorage.multiRemove([KEYS.ingredients, KEYS.recipes]);
   }
 
-  const loadingLabel = phase === 'analyzing' ? 'Scanning your fridge…'
-    : phase === 'found' ? `Found ${ingredients.length} ingredients!`
-    : phase === 'searching' ? 'Finding best recipes…'
-    : '';
-
-  const loadingSubLabel = phase === 'analyzing' ? 'AI is detecting ingredients'
-    : phase === 'found' ? 'Matching to 50,000+ recipes'
-    : phase === 'searching' ? 'Almost there…'
-    : '';
-
-  // ── Loading Screen ──────────────────────────────────────────────────────────
-  if (isLoading) {
-    return (
-      <View style={[sc.scanRoot]}>
-        <StatusBar style="light" />
-
-        <View style={sc.loadingTop}>
-          <View style={sc.loadingSpinner}>
-            {[0, 600, 1200].map(d => <PulseRing key={d} delay={d} size={100} />)}
-            <View style={sc.loadingIconBg}>
-              <Ionicons name="camera-outline" size={30} color={C.darkSage} />
-            </View>
-          </View>
-          <Text style={sc.loadingTitle}>{loadingLabel}</Text>
-          <Text style={sc.loadingSubtitle}>{loadingSubLabel}</Text>
-        </View>
-
-        {phase !== 'analyzing' && ingredients.length > 0 && (
-          <View style={sc.ingredientCloud}>
-            {ingredients.slice(0, 10).map((ing, i) => (
-              i < visibleCount ? (
-                <StaggerItem key={i} index={i}>
-                  <View style={sc.ingredientPill}>
-                    <Text style={sc.ingredientPillText}>{capitalize(ing.name)}</Text>
-                  </View>
-                </StaggerItem>
-              ) : null
-            ))}
-          </View>
-        )}
-
-        <View style={sc.loadingBottom}>
-          <View style={sc.progressTrack}>
-            <Animated.View style={[sc.progressFill, progressAnim]} />
-          </View>
-          <Text style={sc.progressLabel}>This may take a moment</Text>
-        </View>
-      </View>
-    );
-  }
+  const safeTop = insets.top || 44;
 
   // ── Has Previous Results ────────────────────────────────────────────────────
   if (hasResults) {
-    const top3 = recipes.slice(0, 3);
     return (
-      <View style={sc.scanRoot}>
-        <StatusBar style="light" />
-        <View style={sc.safeTop} />
+      <View style={sc.root}>
+        <StatusBar style="dark" />
+        <View style={{ height: safeTop }} />
 
         <View style={sc.header}>
           <Text style={sc.headerTitle}>FoodLens</Text>
-          <TouchableOpacity style={sc.settingsBtn} onPress={() => { haptic.light(); setShowKeyModal(true); }}>
-            <Ionicons name="settings-outline" size={20} color={C.darkSage} />
+          <TouchableOpacity
+            style={sc.settingsBtn}
+            onPress={() => { haptic.light(); setShowKeyModal(true); }}
+          >
+            <Ionicons name="settings-outline" size={20} color={C.inkTer} />
           </TouchableOpacity>
         </View>
 
-        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
-          {/* Last scan card */}
-          <View style={sc.lastScanCard}>
-            <View style={sc.lastScanHeader}>
-              <View style={sc.lastScanDot} />
-              <Text style={sc.lastScanLabel}>{formatScanDate(lastDate)}</Text>
-              <TouchableOpacity onPress={clearResults} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Ionicons name="close" size={18} color={C.darkTextSub} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: S[3] }}>
-              {top3.map((rec, i) => (
-                <TouchableOpacity
-                  key={i}
-                  style={sc.miniCard}
-                  onPress={() => { haptic.light(); navigation.navigate('RecipeDetail', { recipe: rec, userIngredients: ingredients }); }}
-                  activeOpacity={0.88}
-                >
-                  {rec.image
-                    ? <Image source={{ uri: rec.image }} style={sc.miniCardImg} />
-                    : <View style={[sc.miniCardImg, { backgroundColor: C.darkRim, justifyContent: 'center', alignItems: 'center' }]}>
-                        <Text style={{ fontSize: 28 }}>{rec.emoji || '🍽️'}</Text>
-                      </View>
-                  }
-                  <Text style={sc.miniCardName} numberOfLines={2}>{rec.name}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            <Text style={sc.lastScanStats}>
-              {ingredients.length} ingredients · {recipes.length} recipes found
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
+          {/* Found count row */}
+          <View style={sc.foundRow}>
+            <Text style={sc.foundCount}>
+              Found{' '}
+              <Text style={sc.foundBold}>{ingredients.length} ingredients</Text>
             </Text>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Results', { recipes, ingredients })}
+            >
+              <Text style={sc.seeRecipesBtn}>See {recipes.length} recipes →</Text>
+            </TouchableOpacity>
           </View>
 
-          <Press
-            onPress={() => { haptic.medium(); navigation.navigate('Results', { recipes, ingredients }); }}
-            style={sc.seeAllBtn}
+          {/* Ingredient chips horizontal scroll */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={sc.chipsScroll}
+            style={{ marginBottom: S[6] }}
           >
-            <View style={sc.seeAllInner}>
-              <Text style={sc.seeAllText}>See all recipes</Text>
-              <Ionicons name="arrow-forward" size={16} color={C.darkSage} />
-            </View>
-          </Press>
+            {ingredients.map((ing, i) => (
+              <View key={i} style={sc.ingChip}>
+                <Text style={sc.ingChipText}>{capitalize(ing.name)}</Text>
+              </View>
+            ))}
+          </ScrollView>
 
-          <View style={{ height: S[4] }} />
-
-          {/* Scan Again */}
-          <Press onPress={() => startScan(true)} style={{ marginHorizontal: S[6] }} hapticType="medium">
-            <LinearGradient
-              colors={[C.brandMid, C.brand]}
-              start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-              style={sc.primaryBtn}
-            >
-              <Ionicons name="camera-outline" size={20} color="#fff" />
-              <Text style={sc.primaryBtnText}>Scan Again</Text>
-            </LinearGradient>
-          </Press>
-
-          <View style={sc.secondaryRow}>
-            <TouchableOpacity style={sc.secondaryBtn} onPress={() => startScan(false)}>
-              <Text style={sc.secondaryBtnText}>Upload photo</Text>
+          {/* Scan again */}
+          <View style={{ paddingHorizontal: S[5], gap: S[3] }}>
+            <Press onPress={() => startScan(true)} hapticType="medium">
+              <View style={sc.btnAccent}>
+                <Ionicons name="camera-outline" size={18} color="#fff" />
+                <Text style={sc.btnAccentText}>Scan Again</Text>
+              </View>
+            </Press>
+            <Press onPress={() => startScan(false)}>
+              <View style={sc.btnOutline}>
+                <Text style={sc.btnOutlineText}>Choose Photo</Text>
+              </View>
+            </Press>
+            <TouchableOpacity style={sc.clearBtn} onPress={clearResults}>
+              <Text style={sc.clearBtnText}>Clear results</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -687,51 +505,77 @@ function ScanScreen({ navigation }) {
     );
   }
 
-  // ── Empty State ─────────────────────────────────────────────────────────────
+  // ── Empty / Loading State ───────────────────────────────────────────────────
   return (
-    <View style={sc.scanRoot}>
-      <StatusBar style="light" />
-      <View style={sc.safeTop} />
+    <View style={sc.root}>
+      <StatusBar style="dark" />
+      <View style={{ height: safeTop }} />
 
       <View style={sc.header}>
         <Text style={sc.headerTitle}>FoodLens</Text>
-        <TouchableOpacity style={sc.settingsBtn} onPress={() => { haptic.light(); setShowKeyModal(true); }}>
-          <Ionicons name="settings-outline" size={20} color={C.darkSage} />
+        <TouchableOpacity
+          style={sc.settingsBtn}
+          onPress={() => { haptic.light(); setShowKeyModal(true); }}
+        >
+          <Ionicons name="settings-outline" size={20} color={C.inkTer} />
         </TouchableOpacity>
       </View>
 
-      <View style={sc.emptyCenter}>
-        {/* Concentric pulse rings */}
-        <View style={sc.ringWrap}>
-          {[0, 700, 1400].map(d => <PulseRing key={d} delay={d} size={160} />)}
-          <View style={sc.scanIconContainer}>
-            <Ionicons name="camera-outline" size={38} color={C.darkSage} />
-          </View>
-        </View>
+      <View style={{ flex: 1, paddingHorizontal: S[5] }}>
+        <Text style={sc.screenTitle}>What's in{'\n'}your fridge?</Text>
+        <Text style={sc.screenSub}>
+          Point camera at ingredients or select a photo
+        </Text>
 
-        <Text style={sc.emptyClaim}>What's in your fridge?</Text>
-        <Text style={sc.emptySubclaim}>AI detects ingredients and finds recipes instantly</Text>
+        {/* Camera zone */}
+        <TouchableOpacity
+          style={sc.cameraZone}
+          onPress={() => !isLoading && startScan(true)}
+          activeOpacity={isLoading ? 1 : 0.85}
+        >
+          {isLoading ? (
+            <View style={sc.cameraZoneInner}>
+              <ThreeDots />
+              <Text style={sc.loadingText}>{loadingLabel}</Text>
+            </View>
+          ) : (
+            <View style={sc.cameraZoneInner}>
+              <Ionicons name="camera-outline" size={32} color={C.inkTer} />
+              <Text style={sc.tapToScanLabel}>Tap to scan</Text>
+            </View>
+          )}
+        </TouchableOpacity>
 
-        <Press onPress={() => startScan(true)} style={sc.primaryBtnWrap} hapticType="medium">
-          <LinearGradient
-            colors={[C.brandMid, C.brand]}
-            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-            style={sc.primaryBtn}
+        {/* Action buttons */}
+        <View style={sc.btnRow}>
+          <Press
+            onPress={() => startScan(true)}
+            style={{ flex: 1 }}
+            hapticType="medium"
+            disabled={isLoading}
           >
-            <Ionicons name="camera-outline" size={20} color="#fff" />
-            <Text style={sc.primaryBtnText}>Scan Your Fridge</Text>
-          </LinearGradient>
-        </Press>
-
-        <View style={sc.secondaryRow}>
-          <TouchableOpacity style={sc.secondaryBtn} onPress={() => startScan(false)}>
-            <Text style={sc.secondaryBtnText}>Upload photo</Text>
-          </TouchableOpacity>
-          <Text style={sc.dot}>·</Text>
-          <TouchableOpacity style={sc.secondaryBtn} onPress={() => navigation.navigate('KitchenTab')}>
-            <Text style={sc.secondaryBtnText}>Add manually</Text>
-          </TouchableOpacity>
+            <View style={[sc.btnAccent, isLoading && { opacity: 0.38 }]}>
+              <Text style={sc.btnAccentText}>Take Photo</Text>
+            </View>
+          </Press>
+          <Press
+            onPress={() => startScan(false)}
+            style={{ flex: 1 }}
+            disabled={isLoading}
+          >
+            <View style={[sc.btnOutline, isLoading && { opacity: 0.38 }]}>
+              <Text style={sc.btnOutlineText}>Choose Photo</Text>
+            </View>
+          </Press>
         </View>
+
+        <TouchableOpacity
+          style={{ alignItems: 'center', marginTop: S[4] }}
+          onPress={() => navigation.navigate('KitchenTab')}
+          disabled={isLoading}
+        >
+          <Text style={sc.manualLink}>Add manually</Text>
+        </TouchableOpacity>
       </View>
 
       <ApiKeyModal
@@ -748,40 +592,20 @@ const FILTER_TABS = [
   { id: 'all',    label: 'All' },
   { id: 'ready',  label: 'Ready' },
   { id: 'almost', label: 'Almost' },
-  { id: 'shop',   label: 'Shopping' },
+  { id: 'shop',   label: 'Missing 1–2' },
 ];
 
 function ResultsScreen({ route, navigation }) {
   const { recipes = [], ingredients = [] } = route.params || {};
-  const [filter, setFilter]     = useState('all');
+  const [filter, setFilter]       = useState('all');
   const [favorites, setFavorites] = useState([]);
-  const [tabWidths, setTabWidths] = useState([]);
-
-  const indicatorX   = useSharedValue(0);
-  const indicatorW   = useSharedValue(0);
-  const indicatorAnim = useAnimatedStyle(() => ({
-    transform: [{ translateX: indicatorX.value }],
-    width: indicatorW.value,
-  }));
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     AsyncStorage.getItem(KEYS.favorites).then(s => {
       if (s) setFavorites(JSON.parse(s));
     });
   }, []);
-
-  const moveIndicator = useCallback((idx) => {
-    if (tabWidths[idx] !== undefined) {
-      const x = tabWidths.slice(0, idx).reduce((a, b) => a + b, 0);
-      indicatorX.value = withSpring(x, SPRING.snappy);
-      indicatorW.value = withSpring(tabWidths[idx], SPRING.snappy);
-    }
-  }, [tabWidths]);
-
-  useEffect(() => {
-    const idx = FILTER_TABS.findIndex(f => f.id === filter);
-    moveIndicator(idx);
-  }, [filter, tabWidths, moveIndicator]);
 
   async function toggleFav(recipe) {
     haptic.light();
@@ -810,65 +634,47 @@ function ResultsScreen({ route, navigation }) {
     return true;
   });
 
-  const insets = useSafeAreaInsets();
-
   return (
     <View style={[re.root, { paddingTop: insets.top }]}>
       <StatusBar style="dark" />
 
       {/* Header */}
       <View style={re.header}>
-        <Press onPress={() => navigation.goBack()} scale={0.92}>
+        <Press onPress={() => navigation.goBack()} scale={0.9}>
           <View style={re.backBtn}>
-            <Ionicons name="arrow-back" size={20} color={C.ink700} />
+            <Ionicons name="chevron-back" size={22} color={C.ink} />
           </View>
         </Press>
-        <View style={re.headerCenter}>
-          <Text style={re.headerTitle}>Recipes for you</Text>
-          <Text style={re.headerSub}>{pluralize(ingredients.length, 'ingredient')} scanned</Text>
+        <Text style={re.headerTitle}>Recipes for you</Text>
+        <View style={re.headerBadge}>
+          <Text style={re.headerBadgeText}>{recipes.length}</Text>
         </View>
-        <View style={{ width: 40 }} />
       </View>
 
-      {/* Filter tabs */}
-      <View style={re.tabsWrap}>
-        <View style={re.tabsRow}>
-          {FILTER_TABS.map((tab, idx) => (
+      {/* Filter chips — horizontal scroll, instant color swap */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={re.filterRow}
+        style={{ borderBottomWidth: 1, borderBottomColor: C.border }}
+      >
+        {FILTER_TABS.map(tab => {
+          const isActive = filter === tab.id;
+          return (
             <TouchableOpacity
               key={tab.id}
-              style={re.tab}
-              onLayout={e => {
-                const w = e.nativeEvent.layout.width;
-                setTabWidths(prev => {
-                  const next = [...prev];
-                  next[idx] = w;
-                  return next;
-                });
-              }}
-              onPress={() => {
-                haptic.light();
-                setFilter(tab.id);
-              }}
+              style={[re.filterChip, isActive && re.filterChipActive]}
+              onPress={() => { haptic.light(); setFilter(tab.id); }}
               activeOpacity={0.8}
             >
-              <Text style={[re.tabLabel, filter === tab.id && re.tabLabelActive]}>
+              <Text style={[re.filterChipText, isActive && re.filterChipTextActive]}>
                 {tab.label}
+                {counts[tab.id] > 0 ? ` ${counts[tab.id]}` : ''}
               </Text>
-              {counts[tab.id] > 0 && (
-                <View style={[re.tabCount, filter === tab.id && re.tabCountActive]}>
-                  <Text style={[re.tabCountText, filter === tab.id && re.tabCountTextActive]}>
-                    {counts[tab.id]}
-                  </Text>
-                </View>
-              )}
             </TouchableOpacity>
-          ))}
-        </View>
-        {/* Sliding indicator */}
-        <View style={re.indicatorTrack}>
-          <Animated.View style={[re.indicator, indicatorAnim]} />
-        </View>
-      </View>
+          );
+        })}
+      </ScrollView>
 
       {/* Recipe list */}
       <FlatList
@@ -885,18 +691,16 @@ function ResultsScreen({ route, navigation }) {
             onAction={() => setFilter('all')}
           />
         }
-        renderItem={({ item, index }) => (
-          <StaggerItem index={index}>
-            <RecipeCard
-              recipe={item}
-              onPress={() => {
-                haptic.light();
-                navigation.navigate('RecipeDetail', { recipe: item, userIngredients: ingredients });
-              }}
-              onFavorite={toggleFav}
-              isFavorited={isFaved(item)}
-            />
-          </StaggerItem>
+        renderItem={({ item }) => (
+          <RecipeCard
+            recipe={item}
+            onPress={() => {
+              haptic.light();
+              navigation.navigate('RecipeDetail', { recipe: item, userIngredients: ingredients });
+            }}
+            onFavorite={toggleFav}
+            isFavorited={isFaved(item)}
+          />
         )}
       />
     </View>
@@ -908,14 +712,15 @@ function ResultsScreen({ route, navigation }) {
 function KitchenScreen({ navigation }) {
   const [ingredients, setIngredients] = useState([]);
   const [recipesCount, setRecipesCount] = useState(0);
-  const [readyCount, setReadyCount]     = useState(0);
-  const [loading, setLoading]           = useState(true);
-  const [showAdd, setShowAdd]           = useState(false);
-  const [editIdx, setEditIdx]           = useState(null);
-  const [editName, setEditName]         = useState('');
-  const [editQty, setEditQty]           = useState('');
-  const [newName, setNewName]           = useState('');
-  const [newQty, setNewQty]             = useState('');
+  const [readyCount, setReadyCount]   = useState(0);
+  const [loading, setLoading]         = useState(true);
+  const [showAdd, setShowAdd]         = useState(false);
+  const [editIdx, setEditIdx]         = useState(null);
+  const [editName, setEditName]       = useState('');
+  const [editQty, setEditQty]         = useState('');
+  const [newName, setNewName]         = useState('');
+  const [newQty, setNewQty]           = useState('');
+  const insets = useSafeAreaInsets();
 
   useEffect(() => { load(); }, []);
   useEffect(() => {
@@ -948,7 +753,9 @@ function KitchenScreen({ navigation }) {
   function deleteIng(idx) {
     Alert.alert('Remove', 'Remove this ingredient?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: () => { haptic.medium(); save(ingredients.filter((_, i) => i !== idx)); setEditIdx(null); } },
+      { text: 'Remove', style: 'destructive', onPress: () => {
+        haptic.medium(); save(ingredients.filter((_, i) => i !== idx)); setEditIdx(null);
+      }},
     ]);
   }
 
@@ -975,7 +782,6 @@ function KitchenScreen({ navigation }) {
     haptic.success();
   }
 
-  // Group by category
   const grouped = {};
   ingredients.forEach((ing, idx) => {
     const cat = getIngredientCategory(ing.name);
@@ -988,26 +794,27 @@ function KitchenScreen({ navigation }) {
   return (
     <View style={ki.root}>
       <StatusBar style="dark" />
-      <View style={ki.safeTop} />
+      <View style={{ height: insets.top || 44 }} />
 
       <View style={ki.header}>
-        <Text style={ki.title}>My Kitchen</Text>
-        <Press onPress={() => { haptic.light(); setShowAdd(true); }} scale={0.92}>
-          <View style={ki.addBtn}>
+        <Text style={ki.headerTitle}>Kitchen</Text>
+        <Press onPress={() => { haptic.light(); setShowAdd(true); }} scale={0.9}>
+          <View style={ki.addIconBtn}>
             <Ionicons name="add" size={20} color="#fff" />
           </View>
         </Press>
       </View>
 
-      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
 
-        {/* Summary card */}
+        {/* Big stat */}
         {loading ? (
-          <View style={{ marginHorizontal: S[6], marginBottom: S[6] }}>
-            <Skeleton width="100%" height={88} radius={R.xl} />
+          <View style={{ paddingHorizontal: S[5], marginBottom: S[6] }}>
+            <Text style={ki.statLoading}>Loading ingredients…</Text>
           </View>
-        ) : recipesCount > 0 && (
-          <Press
+        ) : recipesCount > 0 ? (
+          <TouchableOpacity
+            style={{ paddingHorizontal: S[5], marginBottom: S[6] }}
             onPress={async () => {
               haptic.light();
               const s = await AsyncStorage.getItem(KEYS.recipes);
@@ -1017,38 +824,34 @@ function KitchenScreen({ navigation }) {
                 navigation.navigate('Results', { recipes: p.recipes || [], ingredients: si ? JSON.parse(si) : [] });
               }
             }}
-            style={{ marginHorizontal: S[6], marginBottom: S[6] }}
+            activeOpacity={0.75}
           >
-            <LinearGradient
-              colors={[C.brandMid, C.brand]}
-              start={{ x: 0, y: 0 }} end={{ x: 1, y: 0.8 }}
-              style={ki.summaryCard}
-            >
-              <View style={ki.summaryLeft}>
-                <Text style={ki.summaryNumber}>{recipesCount}</Text>
-                <View>
-                  <Text style={ki.summaryLabel}>recipes available</Text>
-                  {readyCount > 0 && (
-                    <Text style={ki.summarySub}>{readyCount} with all ingredients</Text>
-                  )}
-                </View>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.6)" />
-            </LinearGradient>
-          </Press>
+            <Text style={ki.statNumber}>{recipesCount}</Text>
+            <Text style={ki.statLabel}>
+              {recipesCount === 1 ? 'recipe ready' : 'recipes ready'}
+            </Text>
+            <Text style={ki.statSub}>
+              From {ingredients.length} ingredient{ingredients.length !== 1 ? 's' : ''}
+              {readyCount > 0 ? ` · ${readyCount} with all ingredients` : ''}
+            </Text>
+            <Text style={ki.updateLink}>Update ingredients</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={{ paddingHorizontal: S[5], marginBottom: S[6] }}>
+            <Text style={ki.statNumber}>{ingredients.length}</Text>
+            <Text style={ki.statLabel}>
+              {ingredients.length === 1 ? 'ingredient' : 'ingredients'}
+            </Text>
+            <TouchableOpacity onPress={() => setShowAdd(true)}>
+              <Text style={ki.updateLink}>Add ingredients</Text>
+            </TouchableOpacity>
+          </View>
         )}
 
-        {/* Ingredients */}
+        {/* Ingredients by category */}
         {loading ? (
-          <View style={{ paddingHorizontal: S[6], gap: S[4] }}>
-            {['Proteins', 'Vegetables'].map(c => (
-              <View key={c}>
-                <Skeleton width={80} height={14} radius={4} style={{ marginBottom: S[3] }} />
-                <View style={{ flexDirection: 'row', gap: S[2], flexWrap: 'wrap' }}>
-                  {[1,2,3].map(i => <Skeleton key={i} width={80 + i * 20} height={36} radius={R.full} />)}
-                </View>
-              </View>
-            ))}
+          <View style={{ paddingHorizontal: S[5] }}>
+            <Text style={ki.loadingText}>Loading…</Text>
           </View>
         ) : ingredients.length === 0 ? (
           <EmptyState
@@ -1060,46 +863,42 @@ function KitchenScreen({ navigation }) {
           />
         ) : (
           <View style={ki.categories}>
-            {cats.map((cat, ci) => {
+            <SectionHeader text="Your Ingredients" />
+            {cats.map(cat => {
               const meta = getCategoryMeta(cat);
               return (
-                <StaggerItem key={cat} index={ci}>
-                  <View style={ki.catSection}>
-                    <View style={ki.catLabelRow}>
-                      <Text style={ki.catEmoji}>{meta.emoji}</Text>
-                      <Text style={ki.catLabel}>{cat}</Text>
-                    </View>
-                    <View style={ki.chipRow}>
-                      {grouped[cat].map(({ name, quantity, idx }) => (
-                        <Press key={idx} onPress={() => openEdit(idx)} scale={0.94} hapticType="light">
-                          <View style={ki.chip}>
-                            <Text style={ki.chipText}>{capitalize(name)}</Text>
-                            {quantity ? <Text style={ki.chipQty}> · {quantity}</Text> : null}
-                          </View>
-                        </Press>
-                      ))}
-                    </View>
+                <View key={cat} style={ki.catSection}>
+                  <Text style={ki.catLabel}>{meta.emoji} {cat}</Text>
+                  <View style={ki.chipRow}>
+                    {grouped[cat].map(({ name, quantity, idx }) => (
+                      <Press key={idx} onPress={() => openEdit(idx)} scale={0.95} hapticType="light">
+                        <View style={ki.chip}>
+                          <Text style={ki.chipText}>{capitalize(name)}</Text>
+                          {quantity ? <Text style={ki.chipQty}> · {quantity}</Text> : null}
+                        </View>
+                      </Press>
+                    ))}
                   </View>
-                </StaggerItem>
+                </View>
               );
             })}
           </View>
         )}
 
         <TouchableOpacity style={ki.addRow} onPress={() => { haptic.light(); setShowAdd(true); }}>
-          <Ionicons name="add-circle-outline" size={18} color={C.brand} />
+          <Ionicons name="add-circle-outline" size={18} color={C.accent} />
           <Text style={ki.addRowText}>Add ingredient</Text>
         </TouchableOpacity>
       </ScrollView>
 
       {/* Edit modal */}
-      <Modal visible={editIdx !== null} transparent animationType="fade">
+      <Modal visible={editIdx !== null} transparent animationType="slide">
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={ui.modalOverlay}>
           <View style={ui.modalSheet}>
-            <View style={ui.modalDragHandle} />
+            <View style={ui.modalHandle} />
             <Text style={ui.modalTitle}>Edit ingredient</Text>
-            <TextInput style={ui.input} placeholder="Name" value={editName} onChangeText={setEditName} />
-            <TextInput style={ui.input} placeholder="Quantity (optional)" value={editQty} onChangeText={setEditQty} />
+            <TextInput style={ui.input} placeholder="Name" value={editName} onChangeText={setEditName} placeholderTextColor={C.inkTer} />
+            <TextInput style={ui.input} placeholder="Quantity (optional)" value={editQty} onChangeText={setEditQty} placeholderTextColor={C.inkTer} />
             <View style={ui.modalBtnRow}>
               <Press onPress={() => deleteIng(editIdx)} style={{ flex: 1 }}>
                 <View style={ui.btnDanger}><Text style={ui.btnDangerText}>Remove</Text></View>
@@ -1108,7 +907,7 @@ function KitchenScreen({ navigation }) {
                 <View style={ui.btnSecondary}><Text style={ui.btnSecondaryText}>Cancel</Text></View>
               </Press>
               <Press onPress={saveEdit} style={{ flex: 1 }} hapticType="medium">
-                <View style={ui.btnPrimary}><Text style={ui.btnPrimaryText}>Save</Text></View>
+                <View style={ui.btnAccent}><Text style={ui.btnAccentText}>Save</Text></View>
               </Press>
             </View>
           </View>
@@ -1116,20 +915,20 @@ function KitchenScreen({ navigation }) {
       </Modal>
 
       {/* Add modal */}
-      <Modal visible={showAdd} transparent animationType="fade">
+      <Modal visible={showAdd} transparent animationType="slide">
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={ui.modalOverlay}>
           <View style={ui.modalSheet}>
-            <View style={ui.modalDragHandle} />
+            <View style={ui.modalHandle} />
             <Text style={ui.modalTitle}>Add ingredient</Text>
-            <TextInput style={ui.input} placeholder="Name" value={newName} onChangeText={setNewName} autoFocus />
-            <TextInput style={ui.input} placeholder="Quantity (optional)" value={newQty} onChangeText={setNewQty} />
+            <TextInput style={ui.input} placeholder="Name" value={newName} onChangeText={setNewName} autoFocus placeholderTextColor={C.inkTer} />
+            <TextInput style={ui.input} placeholder="Quantity (optional)" value={newQty} onChangeText={setNewQty} placeholderTextColor={C.inkTer} />
             <View style={ui.modalBtnRow}>
               <Press onPress={() => setShowAdd(false)} style={{ flex: 1 }}>
                 <View style={ui.btnSecondary}><Text style={ui.btnSecondaryText}>Cancel</Text></View>
               </Press>
               <Press onPress={addIng} style={{ flex: 2 }} hapticType="medium">
-                <View style={[ui.btnPrimary, !newName.trim() && { opacity: 0.45 }]}>
-                  <Text style={ui.btnPrimaryText}>Add</Text>
+                <View style={[ui.btnAccent, !newName.trim() && { opacity: 0.4 }]}>
+                  <Text style={ui.btnAccentText}>Add</Text>
                 </View>
               </Press>
             </View>
@@ -1142,13 +941,17 @@ function KitchenScreen({ navigation }) {
 
 // ─── SavedScreen ──────────────────────────────────────────────────────────────
 
+const SAVED_TABS = ['Shopping', 'Favorites', 'History'];
+
 function SavedScreen({ navigation }) {
-  const [favorites, setFavorites]   = useState([]);
+  const [savedTab, setSavedTab]         = useState(0);
+  const [favorites, setFavorites]       = useState([]);
   const [shoppingList, setShoppingList] = useState([]);
-  const [history, setHistory]       = useState([]);
-  const [loading, setLoading]       = useState(true);
-  const [showInput, setShowInput]   = useState(false);
-  const [newItem, setNewItem]       = useState('');
+  const [history, setHistory]           = useState([]);
+  const [loading, setLoading]           = useState(true);
+  const [showInput, setShowInput]       = useState(false);
+  const [newItem, setNewItem]           = useState('');
+  const insets = useSafeAreaInsets();
 
   useEffect(() => { loadAll(); }, []);
   useEffect(() => {
@@ -1165,7 +968,7 @@ function SavedScreen({ navigation }) {
       ]);
       if (f) setFavorites(JSON.parse(f));
       if (s) setShoppingList(JSON.parse(s));
-      if (h) setHistory(JSON.parse(h).slice(0, 5));
+      if (h) setHistory(JSON.parse(h).slice(0, 10));
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }
@@ -1196,8 +999,6 @@ function SavedScreen({ navigation }) {
     await AsyncStorage.setItem(KEYS.favorites, JSON.stringify(upd));
   }
 
-  const uncheckedCount = shoppingList.filter(i => !i.checked).length;
-
   async function shareList() {
     const items = shoppingList.filter(i => !i.checked);
     if (!items.length) { Alert.alert('Empty', 'No items to share.'); return; }
@@ -1206,163 +1007,166 @@ function SavedScreen({ navigation }) {
     });
   }
 
+  const uncheckedCount = shoppingList.filter(i => !i.checked).length;
+
   return (
     <View style={sv.root}>
       <StatusBar style="dark" />
-      <View style={sv.safeTop} />
+      <View style={{ height: insets.top || 44 }} />
 
       <View style={sv.header}>
-        <Text style={sv.title}>Saved</Text>
+        <Text style={sv.headerTitle}>Saved</Text>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
+      {/* Segmented control */}
+      <View style={sv.segWrapper}>
+        {SAVED_TABS.map((label, i) => (
+          <TouchableOpacity
+            key={label}
+            style={[sv.segment, savedTab === i && sv.segmentActive]}
+            onPress={() => { haptic.light(); setSavedTab(i); }}
+            activeOpacity={0.8}
+          >
+            <Text style={[sv.segLabel, savedTab === i && sv.segLabelActive]}>{label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
 
-        {/* Shopping List */}
-        <View style={sv.section}>
-          <View style={sv.sectionHeader}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: S[2] }}>
-              <Text style={sv.sectionTitle}>Shopping List</Text>
-              {uncheckedCount > 0 && (
-                <View style={sv.badge}>
-                  <Text style={sv.badgeText}>{uncheckedCount}</Text>
-                </View>
-              )}
-            </View>
-            <View style={{ flexDirection: 'row', gap: S[3] }}>
+      {/* Shopping */}
+      {savedTab === 0 && (
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
+          <View style={sv.tabContent}>
+            <View style={sv.sectionActions}>
               {shoppingList.length > 0 && (
                 <TouchableOpacity onPress={shareList}>
-                  <Ionicons name="share-outline" size={20} color={C.ink400} />
+                  <Ionicons name="share-outline" size={20} color={C.inkTer} />
                 </TouchableOpacity>
               )}
               <TouchableOpacity onPress={() => { haptic.light(); setShowInput(v => !v); }}>
-                <Ionicons name={showInput ? 'close' : 'add'} size={22} color={C.brand} />
+                <Ionicons name={showInput ? 'close' : 'add'} size={22} color={C.accent} />
               </TouchableOpacity>
             </View>
-          </View>
 
-          {showInput && (
-            <View style={sv.addRow}>
-              <TextInput
-                style={sv.addInput}
-                placeholder="Add item…"
-                placeholderTextColor={C.ink300}
-                value={newItem}
-                onChangeText={setNewItem}
-                onSubmitEditing={addItem}
-                returnKeyType="done"
-                autoFocus
-              />
-              <Press onPress={addItem} hapticType="medium">
-                <View style={sv.addBtn}><Text style={sv.addBtnText}>Add</Text></View>
-              </Press>
-            </View>
-          )}
+            {showInput && (
+              <View style={sv.addRow}>
+                <TextInput
+                  style={sv.addInput}
+                  placeholder="Add item…"
+                  placeholderTextColor={C.inkTer}
+                  value={newItem}
+                  onChangeText={setNewItem}
+                  onSubmitEditing={addItem}
+                  returnKeyType="done"
+                  autoFocus
+                />
+                <Press onPress={addItem} hapticType="medium">
+                  <View style={sv.addBtn}><Text style={sv.addBtnText}>Add</Text></View>
+                </Press>
+              </View>
+            )}
 
-          {loading ? (
-            <View style={{ gap: S[2] }}>
-              {[1,2,3].map(i => <Skeleton key={i} width="100%" height={52} radius={R.lg} />)}
-            </View>
-          ) : shoppingList.length === 0 ? (
-            <Text style={sv.emptyNote}>
-              Add items here, or save missing ingredients directly from any recipe.
-            </Text>
-          ) : (
-            <View style={{ gap: S[2] }}>
-              {shoppingList.map((item, idx) => (
-                <TouchableOpacity
-                  key={idx}
-                  style={[sv.shoppingItem, item.checked && sv.shoppingItemDone]}
-                  onPress={() => toggleItem(idx)}
-                  activeOpacity={0.85}
-                >
-                  <View style={[sv.checkbox, item.checked && sv.checkboxDone]}>
-                    {item.checked && <Ionicons name="checkmark" size={13} color="#fff" />}
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[sv.itemName, item.checked && sv.itemNameDone]}>{item.name}</Text>
-                    {item.recipeName && (
-                      <Text style={sv.itemRecipe}>{item.recipeName}</Text>
-                    )}
-                  </View>
+            {loading ? (
+              <Text style={sv.loadingText}>Loading…</Text>
+            ) : shoppingList.length === 0 ? (
+              <Text style={sv.emptyNote}>
+                Add items here, or save missing ingredients directly from any recipe.
+              </Text>
+            ) : (
+              <View style={{ gap: 1 }}>
+                {shoppingList.map((item, idx) => (
                   <TouchableOpacity
-                    onPress={() => { haptic.light(); saveList(shoppingList.filter((_, i) => i !== idx)); }}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    key={idx}
+                    style={sv.shoppingRow}
+                    onPress={() => toggleItem(idx)}
+                    activeOpacity={0.85}
                   >
-                    <Ionicons name="close" size={16} color={C.ink300} />
+                    <View style={[sv.checkbox, item.checked && sv.checkboxDone]}>
+                      {item.checked && <Ionicons name="checkmark" size={12} color="#fff" />}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[sv.itemName, item.checked && sv.itemNameDone]}>{item.name}</Text>
+                      {item.recipeName && <Text style={sv.itemRecipe}>{item.recipeName}</Text>}
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => { haptic.light(); saveList(shoppingList.filter((_, i) => i !== idx)); }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons name="close" size={15} color={C.inkTer} />
+                    </TouchableOpacity>
                   </TouchableOpacity>
-                </TouchableOpacity>
-              ))}
-
-              {shoppingList.filter(i => i.checked).length > 0 && (
-                <TouchableOpacity
-                  style={sv.clearBtn}
-                  onPress={() => { haptic.light(); saveList(shoppingList.filter(i => !i.checked)); }}
-                >
-                  <Ionicons name="trash-outline" size={14} color={C.rose} />
-                  <Text style={sv.clearText}>
-                    Clear {shoppingList.filter(i => i.checked).length} checked
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
-        </View>
-
-        {/* Saved Recipes */}
-        <View style={sv.section}>
-          <View style={sv.sectionHeader}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: S[2] }}>
-              <Text style={sv.sectionTitle}>Saved Recipes</Text>
-              {favorites.length > 0 && (
-                <View style={[sv.badge, { backgroundColor: C.roseBg }]}>
-                  <Text style={[sv.badgeText, { color: C.rose }]}>{favorites.length}</Text>
-                </View>
-              )}
-            </View>
+                ))}
+                {shoppingList.filter(i => i.checked).length > 0 && (
+                  <TouchableOpacity
+                    style={sv.clearDoneBtn}
+                    onPress={() => { haptic.light(); saveList(shoppingList.filter(i => !i.checked)); }}
+                  >
+                    <Ionicons name="trash-outline" size={13} color={C.danger} />
+                    <Text style={sv.clearDoneText}>
+                      Clear {shoppingList.filter(i => i.checked).length} checked
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
           </View>
+        </ScrollView>
+      )}
 
-          {loading ? (
-            <View style={sv.grid}>
-              {[1,2,3,4].map(i => <Skeleton key={i} width={(W - S[6]*2 - S[3]) / 2} height={160} radius={R.xl} />)}
-            </View>
-          ) : favorites.length === 0 ? (
-            <Text style={sv.emptyNote}>
-              Tap the heart on any recipe to save it to your collection.
-            </Text>
-          ) : (
-            <View style={sv.grid}>
-              {favorites.map((rec, i) => (
-                <StaggerItem key={`${rec.id}-${i}`} index={i}>
+      {/* Favorites */}
+      {savedTab === 1 && (
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
+          <View style={sv.tabContent}>
+            {loading ? (
+              <Text style={sv.loadingText}>Loading…</Text>
+            ) : favorites.length === 0 ? (
+              <Text style={sv.emptyNote}>
+                Tap the heart on any recipe to save it here.
+              </Text>
+            ) : (
+              <View style={sv.favGrid}>
+                {favorites.map((rec, i) => (
                   <GridCard
+                    key={`${rec.id}-${i}`}
                     recipe={rec}
                     onPress={() => { haptic.light(); navigation.navigate('RecipeDetail', { recipe: rec }); }}
                   />
-                </StaggerItem>
-              ))}
-            </View>
-          )}
-        </View>
-
-        {/* Scan History */}
-        {history.length > 0 && (
-          <View style={sv.section}>
-            <View style={sv.sectionHeader}>
-              <Text style={sv.sectionTitle}>Scan History</Text>
-            </View>
-            {history.map(entry => (
-              <View key={entry.id} style={sv.historyItem}>
-                <View style={sv.historyDot} />
-                <View style={{ flex: 1 }}>
-                  <Text style={sv.historyDate}>{formatScanDate(entry.date)}</Text>
-                  <Text style={sv.historySub}>{pluralize(entry.ingredients?.length || 0, 'ingredient')}</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={14} color={C.ink300} />
+                ))}
               </View>
-            ))}
+            )}
           </View>
-        )}
+        </ScrollView>
+      )}
 
-      </ScrollView>
+      {/* History */}
+      {savedTab === 2 && (
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
+          <View style={sv.tabContent}>
+            {loading ? (
+              <Text style={sv.loadingText}>Loading…</Text>
+            ) : history.length === 0 ? (
+              <Text style={sv.emptyNote}>No scans yet.</Text>
+            ) : (
+              history.map(entry => (
+                <View key={entry.id} style={sv.historyRow}>
+                  {entry.uri ? (
+                    <Image source={{ uri: entry.uri }} style={sv.historyThumb} />
+                  ) : (
+                    <View style={[sv.historyThumb, { backgroundColor: C.surface, justifyContent: 'center', alignItems: 'center' }]}>
+                      <Ionicons name="camera-outline" size={18} color={C.inkTer} />
+                    </View>
+                  )}
+                  <View style={{ flex: 1 }}>
+                    <Text style={sv.historyIngredients}>
+                      {pluralize(entry.ingredients?.length || 0, 'ingredient')}
+                    </Text>
+                    <Text style={sv.historyDate}>{formatScanDate(entry.date)}</Text>
+                  </View>
+                </View>
+              ))
+            )}
+          </View>
+        </ScrollView>
+      )}
     </View>
   );
 }
@@ -1373,7 +1177,6 @@ function RecipeDetailScreen({ route, navigation }) {
   const { recipe, userIngredients = [] } = route.params;
   const [isFaved, setIsFaved] = useState(false);
   const insets = useSafeAreaInsets();
-  const HERO = H * 0.44;
 
   useEffect(() => {
     AsyncStorage.getItem(KEYS.favorites).then(s => {
@@ -1399,7 +1202,7 @@ function RecipeDetailScreen({ route, navigation }) {
     const s    = await AsyncStorage.getItem(KEYS.shopping);
     const list = s ? JSON.parse(s) : [];
     const existing = list.map(i => i.name.toLowerCase());
-    const newItems = missing
+    const newItems  = missing
       .filter(m => !existing.includes(m.toLowerCase()))
       .map(name => ({ name, checked: false, recipeName: recipe.name }));
     if (!newItems.length) { Alert.alert('Already Added', 'All missing items are in your list.'); return; }
@@ -1413,33 +1216,27 @@ function RecipeDetailScreen({ route, navigation }) {
   const hasCook = recipe.steps?.length > 0;
 
   return (
-    <View style={{ flex: 1, backgroundColor: C.bgBase }}>
-      <StatusBar style="light" />
+    <View style={{ flex: 1, backgroundColor: C.white }}>
+      <StatusBar style="dark" />
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: 40 }}
+        contentContainerStyle={{ paddingBottom: 48 + (insets.bottom || 0) }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Hero */}
-        <View style={{ height: HERO, position: 'relative' }}>
+        {/* Hero image — edge to edge, no radius */}
+        <View style={{ height: 240, backgroundColor: C.surface }}>
           {recipe.image ? (
             <Image source={{ uri: recipe.image }} style={{ width: '100%', height: '100%', resizeMode: 'cover' }} />
           ) : (
-            <View style={[{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: C.bgSubtle }]}>
-              <Text style={{ fontSize: 90 }}>{recipe.emoji || '🍽️'}</Text>
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+              <Text style={{ fontSize: 80 }}>{recipe.emoji || '🍽️'}</Text>
             </View>
           )}
-          {/* Cinematic gradient */}
-          <LinearGradient
-            colors={['rgba(0,0,0,0.38)', 'transparent', 'rgba(0,0,0,0.52)']}
-            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-          />
-
-          {/* Nav */}
+          {/* Nav bar overlay */}
           <View style={[de.nav, { paddingTop: insets.top + S[2] }]}>
             <Press onPress={() => navigation.goBack()} scale={0.9}>
               <View style={de.navBtn}>
-                <Ionicons name="arrow-back" size={20} color="#fff" />
+                <Ionicons name="chevron-back" size={22} color="#fff" />
               </View>
             </Press>
             <View style={{ flexDirection: 'row', gap: S[2] }}>
@@ -1452,66 +1249,70 @@ function RecipeDetailScreen({ route, navigation }) {
               )}
               <Press onPress={toggleFav} scale={0.9}>
                 <View style={de.navBtn}>
-                  <Ionicons name={isFaved ? 'heart' : 'heart-outline'} size={20} color={isFaved ? '#FF3B30' : '#fff'} />
+                  <Ionicons name={isFaved ? 'heart' : 'heart-outline'} size={20} color={isFaved ? C.danger : '#fff'} />
                 </View>
               </Press>
             </View>
           </View>
         </View>
 
-        {/* Content card */}
-        <View style={de.card}>
-          {/* Tags */}
-          <View style={de.tagRow}>
-            {recipe.area && <View style={de.tag}><Text style={de.tagText}>{recipe.area}</Text></View>}
-            {recipe.category && <View style={de.tag}><Text style={de.tagText}>{recipe.category}</Text></View>}
-          </View>
-
-          {/* Title — Playfair Display */}
+        {/* Content */}
+        <View style={de.content}>
+          {/* Title */}
           <Text style={de.title}>{recipe.name}</Text>
 
-          {/* Match row */}
-          {recipe.match_percent !== undefined && (
-            <View style={de.matchRow}>
-              <MatchDots matchPercent={recipe.match_percent} size={10} />
-              <Text style={de.matchText}>
-                {isReady
-                  ? 'You have all ingredients'
-                  : `${recipe.matched_count || 0} of ${total} ingredients`}
-              </Text>
-              {isReady && (
-                <View style={de.readyPill}>
-                  <Text style={de.readyPillText}>Ready</Text>
-                </View>
-              )}
-            </View>
+          {/* Meta chips row */}
+          <View style={de.chipRow}>
+            {recipe.area && <View style={de.chip}><Text style={de.chipText}>{recipe.area}</Text></View>}
+            {recipe.category && <View style={de.chip}><Text style={de.chipText}>{recipe.category}</Text></View>}
+            {isReady ? (
+              <View style={[de.chip, de.chipReady]}>
+                <Text style={[de.chipText, { color: C.successText }]}>Ready to cook</Text>
+              </View>
+            ) : recipe.missing_count > 0 && (
+              <View style={[de.chip, de.chipMissing]}>
+                <Text style={[de.chipText, { color: C.amberText }]}>Missing {recipe.missing_count}</Text>
+              </View>
+            )}
+          </View>
+
+          {/* CTA */}
+          {hasCook && (
+            <Press
+              onPress={() => { haptic.medium(); navigation.navigate('CookMode', { recipe }); }}
+              hapticType="medium"
+              style={{ marginBottom: S[5] }}
+            >
+              <View style={de.cookBtn}>
+                <Ionicons name="flame-outline" size={20} color="#fff" />
+                <Text style={de.cookBtnText}>Start Cooking</Text>
+              </View>
+            </Press>
           )}
 
-          {/* Missing ingredients inline */}
+          {/* Missing ingredients */}
           {recipe.missing_ingredients?.length > 0 && (
             <View style={de.missingCard}>
-              <View style={de.missingHeader}>
-                <Ionicons name="cart-outline" size={15} color={C.amber} />
-                <Text style={de.missingTitle}>You're missing</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: S[3] }}>
+                <Text style={de.missingSectionTitle}>MISSING</Text>
+                <TouchableOpacity onPress={addMissing}>
+                  <Text style={de.addToListText}>Add to list</Text>
+                </TouchableOpacity>
               </View>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: S[2], marginBottom: S[3] }}>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: S[2] }}>
                 {recipe.missing_ingredients.map((m, i) => (
                   <View key={i} style={de.missingPill}>
                     <Text style={de.missingPillText}>{m}</Text>
                   </View>
                 ))}
               </View>
-              <TouchableOpacity style={de.addToListBtn} onPress={addMissing}>
-                <Ionicons name="add-circle-outline" size={15} color={C.brand} />
-                <Text style={de.addToListText}>Add to shopping list</Text>
-              </TouchableOpacity>
             </View>
           )}
 
-          {/* Ingredients list */}
+          {/* Ingredients */}
           {recipe.ingredients?.length > 0 && (
             <View style={de.section}>
-              <Text style={de.sectionTitle}>Ingredients</Text>
+              <Text style={de.sectionTitle}>INGREDIENTS</Text>
               {recipe.ingredients.map((ing, i) => {
                 const have = recipe.matched_ingredients?.some(m =>
                   m.toLowerCase().includes(ing.name.toLowerCase()) ||
@@ -1519,28 +1320,24 @@ function RecipeDetailScreen({ route, navigation }) {
                 );
                 return (
                   <View key={i} style={[de.ingRow, i < recipe.ingredients.length - 1 && de.ingRowBorder]}>
-                    <View style={[de.ingStatus, { backgroundColor: have ? C.emeraldBg : C.bgSubtle }]}>
-                      <Ionicons
-                        name={have ? 'checkmark' : 'close'}
-                        size={12}
-                        color={have ? C.emerald : C.ink300}
-                      />
+                    <View style={[de.ingDot, { backgroundColor: have ? C.successBg : C.surface }]}>
+                      <Ionicons name={have ? 'checkmark' : 'remove'} size={11} color={have ? C.success : C.inkTer} />
                     </View>
                     <Text style={de.ingMeasure}>{ing.measure}</Text>
-                    <Text style={[de.ingName, !have && { color: C.ink400 }]}>{ing.name}</Text>
+                    <Text style={[de.ingName, !have && { color: C.inkTer }]}>{ing.name}</Text>
                   </View>
                 );
               })}
             </View>
           )}
 
-          {/* Instructions */}
+          {/* Steps */}
           {recipe.steps?.length > 0 && (
             <View style={de.section}>
-              <Text style={de.sectionTitle}>Instructions</Text>
+              <Text style={de.sectionTitle}>STEPS</Text>
               {recipe.steps.map((step, i) => (
                 <View key={i} style={de.stepRow}>
-                  <View style={de.stepNum}>
+                  <View style={de.stepNumBadge}>
                     <Text style={de.stepNumText}>{i + 1}</Text>
                   </View>
                   <Text style={de.stepText}>{step}</Text>
@@ -1549,41 +1346,22 @@ function RecipeDetailScreen({ route, navigation }) {
             </View>
           )}
 
-          {/* CTAs */}
-          <View style={de.actions}>
-            {hasCook && (
-              <Press
-                onPress={() => { haptic.medium(); navigation.navigate('CookMode', { recipe }); }}
-                hapticType="medium"
-              >
-                <LinearGradient
-                  colors={[C.brandMid, C.brand]}
-                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-                  style={de.cookBtn}
-                >
-                  <Ionicons name="flame-outline" size={20} color="#fff" />
-                  <Text style={de.cookBtnText}>Start Cooking</Text>
-                  <Ionicons name="arrow-forward" size={17} color="rgba(255,255,255,0.6)" />
-                </LinearGradient>
-              </Press>
-            )}
-
-            <View style={de.secActions}>
-              <Press onPress={toggleFav} style={{ flex: 1 }}>
+          {/* Secondary actions */}
+          <View style={de.secActions}>
+            <Press onPress={toggleFav} style={{ flex: 1 }}>
+              <View style={de.secBtn}>
+                <Ionicons name={isFaved ? 'heart' : 'heart-outline'} size={17} color={isFaved ? C.danger : C.accent} />
+                <Text style={de.secBtnText}>{isFaved ? 'Saved' : 'Save'}</Text>
+              </View>
+            </Press>
+            {(recipe.source || recipe.youtube) && (
+              <Press onPress={() => Linking.openURL(recipe.source || recipe.youtube)} style={{ flex: 1 }}>
                 <View style={de.secBtn}>
-                  <Ionicons name={isFaved ? 'heart' : 'heart-outline'} size={17} color={isFaved ? C.rose : C.brand} />
-                  <Text style={de.secBtnText}>{isFaved ? 'Saved' : 'Save'}</Text>
+                  <Ionicons name="open-outline" size={17} color={C.accent} />
+                  <Text style={de.secBtnText}>Source</Text>
                 </View>
               </Press>
-              {(recipe.source || recipe.youtube) && (
-                <Press onPress={() => Linking.openURL(recipe.source || recipe.youtube)} style={{ flex: 1 }}>
-                  <View style={de.secBtn}>
-                    <Ionicons name="open-outline" size={17} color={C.brand} />
-                    <Text style={de.secBtnText}>Source</Text>
-                  </View>
-                </Press>
-              )}
-            </View>
+            )}
           </View>
         </View>
       </ScrollView>
@@ -1597,37 +1375,35 @@ function CookModeScreen({ route, navigation }) {
   const { recipe } = route.params;
   const steps = recipe.steps || [];
   const [step, setStep] = useState(0);
+  const [done, setDone] = useState(false);
   const insets = useSafeAreaInsets();
 
-  const progress  = useSharedValue(0);
-  const textOp    = useSharedValue(1);
-  const textTy    = useSharedValue(0);
-  const doneScale = useSharedValue(0);
+  const progress  = useRef(new Animated.Value(0)).current;
+  const textOp    = useRef(new Animated.Value(1)).current;
+  const textTy    = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     const pct = steps.length > 1 ? step / (steps.length - 1) : 1;
-    progress.value = withSpring(pct, SPRING.gentle);
-    if (step === steps.length - 1 && steps.length > 1) {
-      doneScale.value = withSpring(1, SPRING.bouncy);
-    }
+    Animated.timing(progress, { toValue: pct, duration: 250, useNativeDriver: false }).start();
+    if (step === steps.length - 1 && steps.length > 1) setDone(false);
   }, [step]);
 
-  const progressAnim = useAnimatedStyle(() => ({
-    width: `${interpolate(progress.value, [0, 1], [0, 100], Extrapolation.CLAMP)}%`,
-  }));
-
-  const textAnim = useAnimatedStyle(() => ({
-    opacity: textOp.value,
-    transform: [{ translateY: textTy.value }],
-  }));
+  const progressWidth = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, W],
+  });
 
   function animStep(direction, cb) {
-    textOp.value  = withTiming(0, { duration: TIMING.instant });
-    textTy.value  = withTiming(direction * -14, { duration: TIMING.instant }, () => {
-      runOnJS(cb)();
-      textTy.value  = direction * 14;
-      textOp.value  = withTiming(1, { duration: TIMING.fast });
-      textTy.value  = withSpring(0, SPRING.gentle);
+    Animated.parallel([
+      Animated.timing(textOp, { toValue: 0, duration: 80, useNativeDriver: true }),
+      Animated.timing(textTy, { toValue: direction * -14, duration: 80, useNativeDriver: true }),
+    ]).start(() => {
+      cb();
+      textTy.setValue(direction * 14);
+      Animated.parallel([
+        Animated.timing(textOp, { toValue: 1, duration: 160, useNativeDriver: true }),
+        Animated.spring(textTy, { toValue: 0, useNativeDriver: true, speed: 20 }),
+      ]).start();
     });
   }
 
@@ -1645,6 +1421,9 @@ function CookModeScreen({ route, navigation }) {
     if (step < steps.length - 1) {
       haptic.medium();
       animStep(1, () => setStep(s => s + 1));
+    } else {
+      haptic.success();
+      setDone(true);
     }
   }
 
@@ -1660,8 +1439,8 @@ function CookModeScreen({ route, navigation }) {
   if (!steps.length) {
     return (
       <View style={[cm.root, { paddingTop: insets.top }]}>
-        <StatusBar style="light" />
-        <EmptyState icon="reader-outline" title="No instructions" subtitle="This recipe has no steps." dark />
+        <StatusBar style="dark" />
+        <EmptyState icon="reader-outline" title="No instructions" subtitle="This recipe has no steps." />
         <TouchableOpacity style={cm.exitBtn} onPress={() => navigation.goBack()}>
           <Text style={cm.exitBtnText}>Go Back</Text>
         </TouchableOpacity>
@@ -1669,9 +1448,29 @@ function CookModeScreen({ route, navigation }) {
     );
   }
 
+  if (done) {
+    return (
+      <View style={[cm.root, { paddingTop: insets.top, alignItems: 'center', justifyContent: 'center' }]}>
+        <StatusBar style="dark" />
+        <View style={cm.doneCheck}>
+          <Ionicons name="checkmark" size={36} color={C.success} />
+        </View>
+        <Text style={cm.doneTitle}>Recipe complete!</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Text style={cm.doneLink}>Back to recipes</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
     <View style={[cm.root, { paddingTop: insets.top }]} {...panResponder.panHandlers}>
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
+
+      {/* Progress bar — very top */}
+      <View style={cm.progressTrack}>
+        <Animated.View style={[cm.progressFill, { width: progressWidth }]} />
+      </View>
 
       {/* Top bar */}
       <View style={cm.topBar}>
@@ -1681,85 +1480,56 @@ function CookModeScreen({ route, navigation }) {
           onPress={() => { haptic.light(); navigation.goBack(); }}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          <Ionicons name="close" size={22} color={C.darkText} />
+          <Ionicons name="close" size={22} color={C.inkSub} />
         </TouchableOpacity>
-      </View>
-
-      {/* Progress bar */}
-      <View style={cm.progressTrack}>
-        <Animated.View style={[cm.progressFill, progressAnim]} />
       </View>
 
       <Text style={cm.recipeName} numberOfLines={1}>{recipe.name}</Text>
 
-      {/* Step dots */}
-      <View style={cm.dotsRow}>
-        {steps.map((_, i) => (
-          <View
-            key={i}
-            style={[
-              cm.dot,
-              i === step && cm.dotActive,
-              i < step && cm.dotDone,
-            ]}
-          />
-        ))}
-      </View>
-
       {/* Step text */}
-      <Animated.View style={[cm.stepContent, textAnim]}>
+      <Animated.View style={[cm.stepContent, { opacity: textOp, transform: [{ translateY: textTy }] }]}>
         <Text style={cm.stepText}>{steps[step]}</Text>
       </Animated.View>
 
       {/* Navigation */}
-      <View style={[cm.navRow, { paddingBottom: insets.bottom + S[4] }]}>
-        <Press
+      <View style={[cm.navRow, { paddingBottom: Math.max(insets.bottom, S[4]) + S[4] }]}>
+        <TouchableOpacity
+          style={[cm.navBack, step === 0 && { opacity: 0.3 }]}
           onPress={goPrev}
-          scale={0.95}
-          style={[cm.navBtnWrap, step === 0 && { opacity: 0.28 }]}
           disabled={step === 0}
         >
-          <View style={cm.navBtnSecondary}>
-            <Ionicons name="arrow-back" size={18} color={C.darkSage} />
-            <Text style={cm.navBtnSecondaryText}>Prev</Text>
-          </View>
-        </Press>
+          <Ionicons name="chevron-back" size={20} color={C.inkSub} />
+          <Text style={cm.navBackText}>Back</Text>
+        </TouchableOpacity>
 
-        <Press onPress={isLast ? () => navigation.goBack() : goNext} scale={0.97} style={{ flex: 2 }} hapticType="medium">
-          <LinearGradient
-            colors={[C.brandMid, C.brand]}
-            start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-            style={cm.navBtnPrimary}
-          >
-            <Text style={cm.navBtnPrimaryText}>{isLast ? 'Done!' : 'Next Step'}</Text>
-            <Ionicons name={isLast ? 'checkmark' : 'arrow-forward'} size={18} color="#fff" />
-          </LinearGradient>
+        <Press onPress={goNext} scale={0.97} style={cm.navNextWrap} hapticType="medium">
+          <View style={cm.navNext}>
+            <Text style={cm.navNextText}>{isLast ? 'Done' : 'Next'}</Text>
+            <Ionicons name={isLast ? 'checkmark' : 'chevron-forward'} size={20} color="#fff" />
+          </View>
         </Press>
       </View>
     </View>
   );
 }
 
-// ─── Navigation ───────────────────────────────────────────────────────────────
+// ─── Tab Navigator ────────────────────────────────────────────────────────────
 
 function TabNavigator() {
   const insets = useSafeAreaInsets();
 
   return (
     <Tab.Navigator
-      screenOptions={({ route }) => {
-        const isDark = route.name === 'ScanTab';
-        return {
-          headerShown: false,
-          tabBarStyle: [
-            isDark ? tb.dark : tb.light,
-            { paddingBottom: insets.bottom > 0 ? insets.bottom : 16 },
-          ],
-          tabBarActiveTintColor:   isDark ? C.darkSage : C.brand,
-          tabBarInactiveTintColor: isDark ? 'rgba(124,184,152,0.4)' : C.ink300,
-          tabBarLabelStyle: tb.label,
-          tabBarHideOnKeyboard: true,
-        };
+      screenOptions={{
+        headerShown: false,
+        tabBarStyle: [
+          tb.bar,
+          { paddingBottom: insets.bottom > 0 ? insets.bottom : 16 },
+        ],
+        tabBarActiveTintColor:   C.accent,
+        tabBarInactiveTintColor: C.inkTer,
+        tabBarLabelStyle: tb.label,
+        tabBarHideOnKeyboard: true,
       }}
     >
       <Tab.Screen
@@ -1796,20 +1566,9 @@ function TabNavigator() {
   );
 }
 
-// ─── Root App ─────────────────────────────────────────────────────────────────
+// ─── Root App — no font loading gate ─────────────────────────────────────────
 
 export default function App() {
-  const [fontsLoaded] = useFonts({
-    'Inter-Regular':   Inter_400Regular,
-    'Inter-Medium':    Inter_500Medium,
-    'Inter-SemiBold':  Inter_600SemiBold,
-    'Inter-Bold':      Inter_700Bold,
-    'Playfair-Bold':   PlayfairDisplay_700Bold,
-    'Playfair-SemiBold': PlayfairDisplay_600SemiBold,
-  });
-
-  if (!fontsLoaded) return null;
-
   return (
     <SafeAreaProvider>
       <NavigationContainer>
@@ -1825,646 +1584,523 @@ export default function App() {
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
-// Organized by screen prefix to avoid naming collisions.
 
 // ── Global UI ────────────────────────────────────────────────────────────────
 const ui = StyleSheet.create({
+  // Empty state
   emptyWrap: {
     alignItems: 'center',
     paddingVertical: S[10],
     paddingHorizontal: S[8],
   },
-  emptyIcon: {
-    width: 72, height: 72,
-    borderRadius: R['2xl'],
-    backgroundColor: C.brandTint,
+  emptyIconBg: {
+    width: 64, height: 64, borderRadius: R.card,
+    backgroundColor: C.surface,
     justifyContent: 'center', alignItems: 'center',
     marginBottom: S[5],
+    borderWidth: 1, borderColor: C.border,
   },
   emptyTitle: {
-    fontFamily: FONT.sansBold,
-    fontSize: FONT.md,
-    color: C.ink700,
-    marginBottom: S[2],
-    textAlign: 'center',
+    fontSize: FONT.md, fontWeight: '600',
+    color: C.ink,
+    marginBottom: S[2], textAlign: 'center',
     letterSpacing: FONT.snug,
   },
   emptySub: {
-    fontFamily: FONT.sans,
-    fontSize: FONT.sm,
-    color: C.ink400,
+    fontSize: FONT.base, fontWeight: '400',
+    color: C.inkSub,
     textAlign: 'center',
-    lineHeight: FONT.sm * FONT.normal2,
+    lineHeight: FONT.base * 1.5,
   },
-  emptyBtn: { marginTop: S[5] },
-  emptyBtnInner: {
-    backgroundColor: C.brand,
-    paddingHorizontal: S[6],
-    paddingVertical: S[3] + 2,
-    borderRadius: R.full,
-    ...SHADOW.md,
+  emptyBtn: {
+    backgroundColor: C.accent,
+    paddingHorizontal: S[6], paddingVertical: S[3] + 2,
+    borderRadius: R.btn,
   },
   emptyBtnText: {
-    fontFamily: FONT.sansSemiBold,
-    fontSize: FONT.sm,
+    fontSize: FONT.sm, fontWeight: '600',
     color: '#fff',
   },
 
-  sectionLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  // Section header (13px UPPERCASE tracking)
+  sectionHeaderRow: {
+    flexDirection: 'row', alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: S[3],
   },
-  sectionLabel: {
-    fontFamily: FONT.sansSemiBold,
-    fontSize: FONT.xs,
-    color: C.ink400,
+  sectionHeaderText: {
+    fontSize: FONT.sm, fontWeight: '600',
+    color: C.inkTer,
     textTransform: 'uppercase',
-    letterSpacing: FONT.wider,
+    letterSpacing: FONT.cap,
   },
 
   // Recipe card (full-width)
   card: {
-    backgroundColor: C.bgSurface,
-    borderRadius: R['2xl'],
+    backgroundColor: C.white,
+    borderRadius: R.card,
+    borderWidth: 1, borderColor: C.border,
     overflow: 'hidden',
-    ...SHADOW.md,
   },
-  cardImageWrap: {
-    height: 210,
-    position: 'relative',
-    backgroundColor: C.bgSubtle,
+  cardImgWrap: {
+    height: 180,
+    backgroundColor: C.surface,
   },
-  cardImage: {
+  cardImg: {
     width: '100%', height: '100%', resizeMode: 'cover',
   },
-  cardImagePlaceholder: {
+  cardImgPlaceholder: {
     flex: 1, justifyContent: 'center', alignItems: 'center',
-    backgroundColor: C.bgSubtle,
   },
-  cardGradient: {
-    position: 'absolute', bottom: 0, left: 0, right: 0, height: 80,
-  },
-  cardReadyBadge: {
-    position: 'absolute', bottom: 12, left: 12,
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: C.emerald,
-    paddingHorizontal: S[3], paddingVertical: 5,
-    borderRadius: R.full,
-  },
-  cardReadyText: {
-    fontFamily: FONT.sansSemiBold,
-    fontSize: FONT.xs, color: '#fff',
-  },
-  cardCuisineTag: {
-    position: 'absolute', top: 12, left: 12,
-    backgroundColor: 'rgba(0,0,0,0.42)',
-    paddingHorizontal: S[3], paddingVertical: 4,
-    borderRadius: R.full,
-  },
-  cardCuisineText: {
-    fontFamily: FONT.sansMed, fontSize: 11, color: '#fff',
-  },
-  cardContent: {
-    padding: S[4], paddingRight: S[4] + 28,
-  },
-  cardTitle: {
-    fontFamily: FONT.serif,
-    fontSize: FONT.lg,
-    color: C.ink900,
-    lineHeight: FONT.lg * FONT.snug2,
-    letterSpacing: FONT.tight,
-    marginBottom: S[2],
-  },
-  cardMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: S[3],
-  },
-  cardMetaText: {
-    fontFamily: FONT.sans,
-    fontSize: FONT.sm, color: C.ink400,
-  },
-  cardMissing: {
-    fontFamily: FONT.sansMed,
-    fontSize: FONT.xs,
-    color: C.amber,
-    marginTop: S[1] + 2,
-  },
-  cardHeart: {
-    position: 'absolute', bottom: S[4], right: S[4],
-  },
-
-  // Grid card
-  gridCard: {
-    width: (W - S[6] * 2 - S[3]) / 2,
-    backgroundColor: C.bgSurface,
-    borderRadius: R.xl,
-    overflow: 'hidden',
-    ...SHADOW.sm,
-  },
-  gridCardImg: {
-    width: '100%', height: 110, resizeMode: 'cover',
-  },
-  gridCardPlaceholder: {
-    width: '100%', height: 110,
-    backgroundColor: C.bgSubtle,
+  cardFavBtn: {
+    position: 'absolute', top: 10, right: 10,
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.30)',
     justifyContent: 'center', alignItems: 'center',
   },
-  gridCardBody: { padding: S[3] },
-  gridCardTitle: {
-    fontFamily: FONT.sansSemiBold,
+  cardContent: {
+    padding: S[4],
+  },
+  cardTitle: {
+    fontSize: FONT.md, fontWeight: '600',
+    color: C.ink,
+    letterSpacing: FONT.snug,
+    marginBottom: S[2],
+    lineHeight: FONT.md * 1.35,
+  },
+  cardMetaRow: {
+    flexDirection: 'row', alignItems: 'center',
+    gap: S[3], marginBottom: S[2],
+  },
+  cardDots: {
     fontSize: FONT.sm,
-    color: C.ink700,
-    lineHeight: FONT.sm * FONT.normal2,
+  },
+  cardMetaText: {
+    fontSize: FONT.sm, fontWeight: '400',
+    color: C.inkSub,
+  },
+  cardTagRow: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: S[2],
+  },
+  cardTag: {
+    paddingHorizontal: S[2] + 2, paddingVertical: 4,
+    borderRadius: R.chip,
+    borderWidth: 1, borderColor: C.border,
+  },
+  cardTagText: {
+    fontSize: FONT.xs, fontWeight: '500',
+    color: C.inkSub,
+    letterSpacing: FONT.wide,
+  },
+  cardTagReady: {
+    backgroundColor: C.successBg,
+    borderColor: C.successBg,
+  },
+  cardMissing: {
+    fontSize: FONT.sm, fontWeight: '400',
+    color: C.amber,
+    marginTop: S[2],
+  },
+
+  // Grid card (2-col favorites)
+  gridCard: {
+    width: (W - S[5] * 2 - S[3]) / 2,
+    aspectRatio: 1,
+    borderRadius: R.btn,
+    overflow: 'hidden',
+    backgroundColor: C.surface,
+  },
+  gridCardImg: {
+    width: '100%', height: '100%', resizeMode: 'cover',
+    position: 'absolute',
+  },
+  gridCardPlaceholder: {
+    justifyContent: 'center', alignItems: 'center',
+  },
+  gridCardOverlay: {
+    position: 'absolute',
+    bottom: 0, left: 0, right: 0,
+    paddingHorizontal: S[3], paddingBottom: S[3],
+    paddingTop: S[8],
+    backgroundColor: 'rgba(0,0,0,0.48)',
+  },
+  gridCardTitle: {
+    fontSize: FONT.sm, fontWeight: '600',
+    color: '#fff',
+    lineHeight: FONT.sm * 1.4,
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
 
   // Modal
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.52)',
+    backgroundColor: 'rgba(0,0,0,0.45)',
     justifyContent: 'flex-end',
-    padding: 0,
   },
   modalSheet: {
-    backgroundColor: C.bgSurface,
-    borderTopLeftRadius: R['3xl'],
-    borderTopRightRadius: R['3xl'],
+    backgroundColor: C.white,
+    borderTopLeftRadius: R.sheet,
+    borderTopRightRadius: R.sheet,
     padding: S[6],
-    paddingBottom: S[10],
-    ...SHADOW.lg,
+    paddingBottom: S[12],
+    ...SHADOW.float,
   },
-  modalDragHandle: {
+  modalHandle: {
     width: 36, height: 4,
-    backgroundColor: C.rim,
+    backgroundColor: C.border,
     borderRadius: R.full,
     alignSelf: 'center',
     marginBottom: S[5],
   },
   modalIconRow: { alignItems: 'center', marginBottom: S[4] },
   modalIconBg: {
-    width: 52, height: 52, borderRadius: R.xl,
-    backgroundColor: C.brandTint,
+    width: 48, height: 48, borderRadius: R.btn,
+    backgroundColor: C.accentTint,
     justifyContent: 'center', alignItems: 'center',
+    borderWidth: 1, borderColor: `${C.accent}20`,
   },
   modalTitle: {
-    fontFamily: FONT.sansBold,
-    fontSize: FONT.lg,
-    color: C.ink900,
+    fontSize: FONT.lg, fontWeight: '700',
+    color: C.ink,
     textAlign: 'center',
     marginBottom: S[1],
     letterSpacing: FONT.snug,
   },
   modalSub: {
-    fontFamily: FONT.sans,
-    fontSize: FONT.sm, color: C.ink400,
+    fontSize: FONT.sm, fontWeight: '400',
+    color: C.inkSub,
     textAlign: 'center',
     marginBottom: S[5],
   },
+
+  // Inputs
   input: {
     height: 52,
-    backgroundColor: C.bgSubtle,
-    borderRadius: R.lg,
+    backgroundColor: C.surface,
+    borderRadius: R.btn,
     paddingHorizontal: S[4],
-    fontFamily: FONT.sans,
-    fontSize: FONT.base,
-    color: C.ink700,
+    fontSize: FONT.base, fontWeight: '400',
+    color: C.ink,
     marginBottom: S[3],
     borderWidth: 1.5,
-    borderColor: C.rim,
+    borderColor: C.border,
   },
+
+  // Button row
   modalBtnRow: {
     flexDirection: 'row', gap: S[2], marginTop: S[2],
   },
-  btnPrimary: {
-    height: 52, borderRadius: R.lg,
-    backgroundColor: C.brand,
-    justifyContent: 'center', alignItems: 'center',
-    ...SHADOW.sm,
+
+  // Buttons
+  btnAccent: {
+    height: 52, borderRadius: R.btn,
+    backgroundColor: C.accent,
+    flexDirection: 'row',
+    alignItems: 'center', justifyContent: 'center',
+    gap: S[2],
   },
-  btnPrimaryText: {
-    fontFamily: FONT.sansBold, fontSize: FONT.base, color: '#fff',
+  btnAccentText: {
+    fontSize: FONT.base, fontWeight: '600',
+    color: '#fff',
+  },
+  btnOutline: {
+    height: 52, borderRadius: R.btn,
+    backgroundColor: C.white,
+    borderWidth: 1.5, borderColor: C.accent,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  btnOutlineText: {
+    fontSize: FONT.base, fontWeight: '600',
+    color: C.accent,
   },
   btnSecondary: {
-    height: 52, borderRadius: R.lg,
-    backgroundColor: C.bgSubtle,
-    justifyContent: 'center', alignItems: 'center',
-    borderWidth: 1.5, borderColor: C.rim,
+    height: 52, borderRadius: R.btn,
+    backgroundColor: C.surface,
+    borderWidth: 1, borderColor: C.border,
+    alignItems: 'center', justifyContent: 'center',
   },
   btnSecondaryText: {
-    fontFamily: FONT.sansSemiBold, fontSize: FONT.base, color: C.ink500,
+    fontSize: FONT.base, fontWeight: '600',
+    color: C.inkSub,
   },
   btnDanger: {
-    height: 52, borderRadius: R.lg,
-    backgroundColor: C.roseBg,
-    justifyContent: 'center', alignItems: 'center',
+    height: 52, borderRadius: R.btn,
+    backgroundColor: C.dangerBg,
+    alignItems: 'center', justifyContent: 'center',
   },
   btnDangerText: {
-    fontFamily: FONT.sansSemiBold, fontSize: FONT.base, color: C.rose,
+    fontSize: FONT.base, fontWeight: '600',
+    color: C.danger,
   },
 });
 
-// ── ScanScreen Styles ────────────────────────────────────────────────────────
+// ── Scan Screen ───────────────────────────────────────────────────────────────
 const sc = StyleSheet.create({
-  scanRoot: {
-    flex: 1, backgroundColor: C.dark,
-  },
-  safeTop: { height: 52 },
+  root: { flex: 1, backgroundColor: C.white },
+
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: S[6],
-    paddingBottom: S[4],
+    paddingHorizontal: S[5],
+    paddingBottom: S[3],
   },
   headerTitle: {
-    fontFamily: FONT.sansBold,
-    fontSize: FONT.xl,
-    color: C.darkText,
-    letterSpacing: FONT.tight,
-  },
-  settingsBtn: {
-    width: 38, height: 38, borderRadius: 19,
-    backgroundColor: 'rgba(124,184,152,0.1)',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  emptyCenter: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: S[6],
-    paddingBottom: S[12],
-  },
-  ringWrap: {
-    width: 160, height: 160,
-    justifyContent: 'center', alignItems: 'center',
-    marginBottom: S[8],
-  },
-  scanIconContainer: {
-    width: 88, height: 88, borderRadius: 44,
-    backgroundColor: C.darkRim,
-    justifyContent: 'center', alignItems: 'center',
-    borderWidth: 1,
-    borderColor: C.darkBorder,
-    ...SHADOW.md,
-  },
-  emptyClaim: {
-    fontFamily: FONT.sansBold,
-    fontSize: FONT['2xl'],
-    color: C.darkText,
-    textAlign: 'center',
-    letterSpacing: FONT.tight,
-    lineHeight: FONT['2xl'] * FONT.tight2,
-    marginBottom: S[3],
-  },
-  emptySubclaim: {
-    fontFamily: FONT.sans,
-    fontSize: FONT.sm,
-    color: C.darkTextSub,
-    textAlign: 'center',
-    lineHeight: FONT.sm * FONT.normal2,
-    marginBottom: S[8],
-  },
-  primaryBtnWrap: { width: '100%', maxWidth: 340 },
-  primaryBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: S[2],
-    paddingVertical: S[4] + 2,
-    paddingHorizontal: S[6],
-    borderRadius: R.full,
-    ...SHADOW.md,
-  },
-  primaryBtnText: {
-    fontFamily: FONT.sansBold,
-    fontSize: FONT.md,
-    color: '#fff',
+    fontSize: FONT.md, fontWeight: '700',
+    color: C.ink,
     letterSpacing: FONT.snug,
   },
-  secondaryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: S[3],
-    marginTop: S[4],
+  settingsBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: C.surface,
+    justifyContent: 'center', alignItems: 'center',
+    borderWidth: 1, borderColor: C.border,
   },
-  secondaryBtn: {
-    paddingVertical: S[2], paddingHorizontal: S[3],
+
+  // Empty/loading
+  screenTitle: {
+    fontSize: FONT.xl, fontWeight: '700',
+    color: C.ink,
+    letterSpacing: FONT.tight,
+    marginBottom: S[2],
+    lineHeight: FONT.xl * 1.25,
   },
-  secondaryBtnText: {
-    fontFamily: FONT.sansMed,
-    fontSize: FONT.sm,
-    color: C.darkSage,
+  screenSub: {
+    fontSize: FONT.base, fontWeight: '400',
+    color: C.inkSub,
+    lineHeight: FONT.base * 1.5,
+    marginBottom: S[5],
   },
-  dot: {
-    fontFamily: FONT.sans,
-    fontSize: FONT.sm,
-    color: C.darkSage,
-    opacity: 0.4,
+  cameraZone: {
+    flex: 1,
+    borderRadius: R.xl,
+    borderWidth: 1.5,
+    borderColor: C.border,
+    borderStyle: 'dashed',
+    justifyContent: 'center', alignItems: 'center',
+    marginBottom: S[4],
+    minHeight: 200,
+    maxHeight: H * 0.45,
+  },
+  cameraZoneInner: {
+    alignItems: 'center', gap: S[3],
+  },
+  tapToScanLabel: {
+    fontSize: FONT.base, fontWeight: '600',
+    color: C.accent,
+  },
+  loadingText: {
+    fontSize: FONT.base, fontWeight: '400',
+    color: C.inkSub,
+  },
+  btnRow: {
+    flexDirection: 'row', gap: S[3],
+    marginBottom: S[3],
+  },
+  manualLink: {
+    fontSize: FONT.sm, fontWeight: '500',
+    color: C.inkTer,
   },
 
   // Has results
-  lastScanCard: {
-    marginHorizontal: S[6],
-    backgroundColor: C.darkSurface,
-    borderRadius: R['2xl'],
-    padding: S[4],
+  foundRow: {
+    paddingHorizontal: S[5],
     marginBottom: S[4],
-    borderWidth: 1,
-    borderColor: C.darkBorder,
+    gap: 6,
   },
-  lastScanHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: S[2],
+  foundCount: {
+    fontSize: FONT.base, fontWeight: '400',
+    color: C.inkSub,
   },
-  lastScanDot: {
-    width: 7, height: 7, borderRadius: 4,
-    backgroundColor: C.darkSage,
+  foundBold: {
+    fontWeight: '700',
+    color: C.ink,
   },
-  lastScanLabel: {
-    flex: 1,
-    fontFamily: FONT.sansMed,
-    fontSize: FONT.sm,
-    color: C.darkSage,
+  seeRecipesBtn: {
+    fontSize: FONT.sm, fontWeight: '600',
+    color: C.accent,
   },
-  miniCard: {
-    width: 104, marginRight: S[3],
+  chipsScroll: {
+    paddingHorizontal: S[5], gap: S[2], flexDirection: 'row',
   },
-  miniCardImg: {
-    width: 104, height: 72,
-    borderRadius: R.lg,
-    resizeMode: 'cover',
-    marginBottom: S[2],
-    backgroundColor: C.darkRim,
+  ingChip: {
+    paddingHorizontal: S[3] + 2, paddingVertical: S[2],
+    borderRadius: R.chip,
+    backgroundColor: C.accentTint,
+    borderWidth: 1, borderColor: `${C.accent}20`,
   },
-  miniCardName: {
-    fontFamily: FONT.sansMed,
-    fontSize: 11,
-    color: C.darkTextSub,
-    lineHeight: 15,
+  ingChipText: {
+    fontSize: FONT.sm, fontWeight: '500',
+    color: C.accent,
+    letterSpacing: FONT.wide,
   },
-  lastScanStats: {
-    fontFamily: FONT.sans,
-    fontSize: FONT.xs,
-    color: C.darkTextSub,
-    marginTop: S[3],
+  clearBtn: {
+    alignItems: 'center', paddingVertical: S[3],
   },
-  seeAllBtn: {
-    marginHorizontal: S[6],
-    marginBottom: S[2],
-  },
-  seeAllInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: S[2],
-    paddingVertical: S[3],
-  },
-  seeAllText: {
-    fontFamily: FONT.sansSemiBold,
-    fontSize: FONT.sm,
-    color: C.darkSage,
+  clearBtnText: {
+    fontSize: FONT.sm, fontWeight: '500',
+    color: C.inkTer,
   },
 
-  // Loading
-  loadingTop: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: S[12],
-  },
-  loadingSpinner: {
-    width: 100, height: 100,
-    justifyContent: 'center', alignItems: 'center',
-    marginBottom: S[7],
-  },
-  loadingIconBg: {
-    width: 68, height: 68, borderRadius: 34,
-    backgroundColor: C.darkRim,
-    justifyContent: 'center', alignItems: 'center',
-    borderWidth: 1, borderColor: C.darkBorder,
-  },
-  loadingTitle: {
-    fontFamily: FONT.sansBold,
-    fontSize: FONT.xl,
-    color: C.darkText,
-    textAlign: 'center',
-    letterSpacing: FONT.snug,
-    marginBottom: S[2],
-  },
-  loadingSubtitle: {
-    fontFamily: FONT.sans,
-    fontSize: FONT.sm,
-    color: C.darkTextSub,
-    textAlign: 'center',
-  },
-  ingredientCloud: {
+  // Shared button primitives used in this screen
+  btnAccent: {
+    height: 52, borderRadius: R.btn,
+    backgroundColor: C.accent,
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center',
     gap: S[2],
-    paddingHorizontal: S[6],
-    paddingVertical: S[6],
   },
-  ingredientPill: {
-    backgroundColor: 'rgba(124,184,152,0.12)',
-    borderRadius: R.full,
-    paddingHorizontal: S[4],
-    paddingVertical: S[2],
-    borderWidth: 1,
-    borderColor: 'rgba(124,184,152,0.2)',
+  btnAccentText: {
+    fontSize: FONT.base, fontWeight: '600',
+    color: '#fff',
   },
-  ingredientPillText: {
-    fontFamily: FONT.sansMed,
-    fontSize: FONT.sm,
-    color: C.darkSage,
+  btnOutline: {
+    height: 52, borderRadius: R.btn,
+    backgroundColor: C.white,
+    borderWidth: 1.5, borderColor: C.accent,
+    alignItems: 'center', justifyContent: 'center',
   },
-  loadingBottom: {
-    paddingHorizontal: S[8],
-    paddingBottom: S[10],
-    alignItems: 'center',
-  },
-  progressTrack: {
-    width: '100%', height: 2,
-    backgroundColor: 'rgba(124,184,152,0.15)',
-    borderRadius: 1,
-    overflow: 'hidden',
-    marginBottom: S[3],
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: C.darkSage,
-    borderRadius: 1,
-  },
-  progressLabel: {
-    fontFamily: FONT.sans,
-    fontSize: 11,
-    color: C.darkTextSub,
+  btnOutlineText: {
+    fontSize: FONT.base, fontWeight: '600',
+    color: C.accent,
   },
 });
 
-// ── Results Styles ────────────────────────────────────────────────────────────
+// ── Results Screen ────────────────────────────────────────────────────────────
 const re = StyleSheet.create({
-  root: {
-    flex: 1, backgroundColor: C.bgBase,
-  },
+  root: { flex: 1, backgroundColor: C.white },
+
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: S[6],
+    paddingHorizontal: S[5],
     paddingTop: S[3],
     paddingBottom: S[4],
+    gap: S[3],
   },
   backBtn: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: C.bgSurface,
+    width: 40, height: 40, borderRadius: R.btn,
+    backgroundColor: C.surface,
     justifyContent: 'center', alignItems: 'center',
-    ...SHADOW.xs,
+    borderWidth: 1, borderColor: C.border,
   },
-  headerCenter: { alignItems: 'center' },
   headerTitle: {
-    fontFamily: FONT.sansBold,
-    fontSize: FONT.md,
-    color: C.ink900,
-    letterSpacing: FONT.snug,
-  },
-  headerSub: {
-    fontFamily: FONT.sans,
-    fontSize: FONT.xs,
-    color: C.ink400,
-    marginTop: 2,
-  },
-  tabsWrap: {
-    backgroundColor: C.bgBase,
-    borderBottomWidth: 1,
-    borderBottomColor: C.rim,
-    paddingHorizontal: S[6],
-    paddingTop: S[2],
-  },
-  tabsRow: {
-    flexDirection: 'row',
-    paddingBottom: S[3],
-  },
-  tab: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-    paddingVertical: S[2],
+    fontSize: FONT['2xl'], fontWeight: '700',
+    color: C.ink,
+    letterSpacing: FONT.tight,
   },
-  tabLabel: {
-    fontFamily: FONT.sansSemiBold,
-    fontSize: FONT.sm,
-    color: C.ink400,
-  },
-  tabLabelActive: { color: C.brand },
-  tabCount: {
-    backgroundColor: C.rim,
+  headerBadge: {
+    backgroundColor: C.accent,
     borderRadius: R.full,
-    minWidth: 18, height: 18,
-    paddingHorizontal: 5,
+    minWidth: 28, height: 28,
+    paddingHorizontal: S[2],
     justifyContent: 'center', alignItems: 'center',
   },
-  tabCountActive: { backgroundColor: C.brandTint },
-  tabCountText: {
-    fontFamily: FONT.sansBold, fontSize: 10, color: C.ink400,
+  headerBadgeText: {
+    fontSize: FONT.sm, fontWeight: '700',
+    color: '#fff',
   },
-  tabCountTextActive: { color: C.brand },
-  indicatorTrack: {
-    height: 2.5,
-    position: 'relative',
-    marginTop: -1,
+
+  filterRow: {
+    flexDirection: 'row',
+    paddingHorizontal: S[5],
+    paddingVertical: S[3],
+    gap: S[2],
   },
-  indicator: {
-    position: 'absolute',
-    top: 0, bottom: 0, left: 0,
-    backgroundColor: C.brand,
-    borderRadius: R.full,
+  filterChip: {
+    paddingHorizontal: S[3] + 2, paddingVertical: S[2],
+    borderRadius: R.chip,
+    backgroundColor: C.white,
+    borderWidth: 1, borderColor: C.border,
   },
+  filterChipActive: {
+    backgroundColor: C.accent,
+    borderColor: C.accent,
+  },
+  filterChipText: {
+    fontSize: FONT.sm, fontWeight: '500',
+    color: C.inkSub,
+  },
+  filterChipTextActive: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+
   listContent: {
-    paddingHorizontal: S[6],
-    paddingTop: S[5],
+    paddingHorizontal: S[5],
+    paddingTop: S[4],
     paddingBottom: 120,
     gap: S[4],
   },
 });
 
-// ── Kitchen Styles ────────────────────────────────────────────────────────────
+// ── Kitchen Screen ────────────────────────────────────────────────────────────
 const ki = StyleSheet.create({
-  root: { flex: 1, backgroundColor: C.bgBase },
-  safeTop: { height: 52 },
+  root: { flex: 1, backgroundColor: C.white },
+
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: S[6],
+    paddingHorizontal: S[5],
     paddingBottom: S[4],
   },
-  title: {
-    fontFamily: FONT.sansBold,
-    fontSize: FONT['2xl'],
-    color: C.ink900,
+  headerTitle: {
+    fontSize: FONT['2xl'], fontWeight: '700',
+    color: C.ink,
     letterSpacing: FONT.tight,
   },
-  addBtn: {
-    width: 38, height: 38, borderRadius: 19,
-    backgroundColor: C.brand,
+  addIconBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: C.accent,
     justifyContent: 'center', alignItems: 'center',
-    ...SHADOW.sm,
   },
-  summaryCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderRadius: R['2xl'],
-    padding: S[5],
-    ...SHADOW.md,
+
+  // Big stat
+  statNumber: {
+    fontSize: FONT.hero, fontWeight: '700',
+    color: C.ink,
+    letterSpacing: -1.5,
+    lineHeight: FONT.hero * 1.0,
   },
-  summaryLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: S[4],
+  statLabel: {
+    fontSize: FONT.xl, fontWeight: '400',
+    color: C.ink,
+    marginTop: 4, marginBottom: S[1],
   },
-  summaryNumber: {
-    fontFamily: FONT.sansBold,
-    fontSize: FONT['4xl'],
-    color: '#fff',
-    letterSpacing: FONT.tight,
+  statSub: {
+    fontSize: FONT.base, fontWeight: '400',
+    color: C.inkSub,
+    lineHeight: FONT.base * 1.5,
   },
-  summaryLabel: {
-    fontFamily: FONT.sansSemiBold,
-    fontSize: FONT.base,
-    color: 'rgba(255,255,255,0.9)',
+  statLoading: {
+    fontSize: FONT.base, fontWeight: '400',
+    color: C.inkSub,
+    marginTop: S[3],
   },
-  summarySub: {
-    fontFamily: FONT.sans,
-    fontSize: FONT.xs,
-    color: 'rgba(255,255,255,0.6)',
-    marginTop: 2,
+  updateLink: {
+    fontSize: FONT.sm, fontWeight: '600',
+    color: C.accent,
+    marginTop: S[3],
   },
+  loadingText: {
+    fontSize: FONT.base, fontWeight: '400',
+    color: C.inkSub,
+  },
+
+  // Ingredient categories
   categories: {
-    paddingHorizontal: S[6],
+    paddingHorizontal: S[5],
     gap: S[6],
   },
   catSection: {},
-  catLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: S[2],
-    marginBottom: S[3],
-  },
-  catEmoji: { fontSize: 14 },
   catLabel: {
-    fontFamily: FONT.sansSemiBold,
-    fontSize: FONT.xs,
-    color: C.ink400,
-    textTransform: 'uppercase',
-    letterSpacing: FONT.wider,
+    fontSize: FONT.sm, fontWeight: '500',
+    color: C.inkSub,
+    marginBottom: S[3],
   },
   chipRow: {
     flexDirection: 'row',
@@ -2474,204 +2110,207 @@ const ki = StyleSheet.create({
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: C.bgSurface,
-    borderRadius: R.full,
-    paddingHorizontal: S[4],
-    paddingVertical: S[2] + 2,
-    borderWidth: 1,
-    borderColor: C.rim,
-    ...SHADOW.xs,
+    backgroundColor: C.white,
+    borderRadius: R.chip,
+    paddingHorizontal: S[3] + 2,
+    paddingVertical: S[2],
+    borderWidth: 1, borderColor: C.border,
   },
   chipText: {
-    fontFamily: FONT.sansSemiBold,
-    fontSize: FONT.sm,
-    color: C.ink700,
+    fontSize: FONT.sm, fontWeight: '500',
+    color: C.ink,
   },
   chipQty: {
-    fontFamily: FONT.sans,
-    fontSize: FONT.sm,
-    color: C.ink400,
+    fontSize: FONT.sm, fontWeight: '400',
+    color: C.inkSub,
   },
+
   addRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: S[2],
-    marginHorizontal: S[6],
+    marginHorizontal: S[5],
     marginTop: S[6],
     paddingVertical: S[4],
-    borderRadius: R.lg,
+    borderRadius: R.btn,
     borderWidth: 1.5,
-    borderColor: C.rim,
+    borderColor: C.border,
     borderStyle: 'dashed',
   },
   addRowText: {
-    fontFamily: FONT.sansSemiBold,
-    fontSize: FONT.sm,
-    color: C.brand,
+    fontSize: FONT.sm, fontWeight: '600',
+    color: C.accent,
   },
 });
 
-// ── Saved Styles ──────────────────────────────────────────────────────────────
+// ── Saved Screen ──────────────────────────────────────────────────────────────
 const sv = StyleSheet.create({
-  root: { flex: 1, backgroundColor: C.bgBase },
-  safeTop: { height: 52 },
+  root: { flex: 1, backgroundColor: C.white },
+
   header: {
-    paddingHorizontal: S[6],
-    paddingBottom: S[4],
+    paddingHorizontal: S[5],
+    paddingBottom: S[3],
   },
-  title: {
-    fontFamily: FONT.sansBold,
-    fontSize: FONT['2xl'],
-    color: C.ink900,
+  headerTitle: {
+    fontSize: FONT['2xl'], fontWeight: '700',
+    color: C.ink,
     letterSpacing: FONT.tight,
   },
-  section: {
-    paddingHorizontal: S[6],
-    marginBottom: S[7],
-  },
-  sectionHeader: {
+
+  // Segmented control
+  segWrapper: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    marginHorizontal: S[5],
     marginBottom: S[4],
+    backgroundColor: C.surface,
+    borderRadius: R.btn,
+    padding: 3,
   },
-  sectionTitle: {
-    fontFamily: FONT.sansBold,
-    fontSize: FONT.md,
-    color: C.ink900,
-    letterSpacing: FONT.snug,
+  segment: {
+    flex: 1,
+    paddingVertical: S[2],
+    borderRadius: R.btn - 2,
+    alignItems: 'center',
   },
-  badge: {
-    backgroundColor: C.brandTint,
-    borderRadius: R.full,
-    minWidth: 20, height: 20,
-    paddingHorizontal: 6,
-    justifyContent: 'center', alignItems: 'center',
+  segmentActive: {
+    backgroundColor: C.white,
+    borderWidth: 1, borderColor: C.border,
   },
-  badgeText: {
-    fontFamily: FONT.sansBold,
-    fontSize: 11,
-    color: C.brand,
+  segLabel: {
+    fontSize: FONT.sm, fontWeight: '500',
+    color: C.inkSub,
+  },
+  segLabelActive: {
+    color: C.ink,
+    fontWeight: '600',
+  },
+
+  tabContent: {
+    paddingHorizontal: S[5],
+    paddingTop: S[2],
+    paddingBottom: 120,
+  },
+  loadingText: {
+    fontSize: FONT.base, fontWeight: '400',
+    color: C.inkSub,
+    paddingVertical: S[4],
   },
   emptyNote: {
-    fontFamily: FONT.sans,
-    fontSize: FONT.sm,
-    color: C.ink400,
-    lineHeight: FONT.sm * FONT.normal2,
+    fontSize: FONT.base, fontWeight: '400',
+    color: C.inkSub,
+    lineHeight: FONT.base * 1.5,
+    paddingVertical: S[4],
   },
+  sectionActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: S[4],
+    marginBottom: S[3],
+  },
+
   addRow: {
     flexDirection: 'row',
     gap: S[2],
-    marginBottom: S[3],
+    marginBottom: S[4],
   },
   addInput: {
     flex: 1, height: 48,
-    backgroundColor: C.bgSurface,
-    borderRadius: R.lg,
+    backgroundColor: C.surface,
+    borderRadius: R.btn,
     paddingHorizontal: S[4],
-    fontFamily: FONT.sans,
-    fontSize: FONT.base,
-    color: C.ink700,
-    borderWidth: 1.5,
-    borderColor: C.rim,
+    fontSize: FONT.base, fontWeight: '400',
+    color: C.ink,
+    borderWidth: 1.5, borderColor: C.border,
   },
   addBtn: {
-    height: 48,
-    paddingHorizontal: S[4],
-    backgroundColor: C.brand,
-    borderRadius: R.lg,
+    height: 48, paddingHorizontal: S[4],
+    backgroundColor: C.accent,
+    borderRadius: R.btn,
     justifyContent: 'center', alignItems: 'center',
-    ...SHADOW.sm,
   },
   addBtnText: {
-    fontFamily: FONT.sansBold,
-    fontSize: FONT.sm,
+    fontSize: FONT.sm, fontWeight: '600',
     color: '#fff',
   },
-  shoppingItem: {
+
+  // Shopping list
+  shoppingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: C.bgSurface,
-    borderRadius: R.lg,
-    paddingHorizontal: S[4],
-    paddingVertical: S[3] + 2,
-    borderWidth: 1,
-    borderColor: C.rim,
+    paddingVertical: S[4],
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
     gap: S[3],
-  },
-  shoppingItemDone: {
-    opacity: 0.55,
-    borderColor: C.emeraldBg,
   },
   checkbox: {
     width: 22, height: 22, borderRadius: 11,
-    borderWidth: 1.5, borderColor: C.rim,
+    borderWidth: 1.5, borderColor: C.border,
     justifyContent: 'center', alignItems: 'center',
   },
   checkboxDone: {
-    backgroundColor: C.brand, borderColor: C.brand,
+    backgroundColor: C.accent,
+    borderColor: C.accent,
   },
   itemName: {
-    fontFamily: FONT.sansMed,
-    fontSize: FONT.base,
-    color: C.ink700,
+    fontSize: FONT.base, fontWeight: '400',
+    color: C.ink,
   },
   itemNameDone: {
     textDecorationLine: 'line-through',
-    color: C.ink300,
+    color: C.inkTer,
   },
   itemRecipe: {
-    fontFamily: FONT.sans,
-    fontSize: FONT.xs,
-    color: C.ink400,
+    fontSize: FONT.xs, fontWeight: '400',
+    color: C.inkTer,
+    fontStyle: 'italic',
     marginTop: 2,
   },
-  clearBtn: {
+  clearDoneBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: S[2],
-    paddingVertical: S[3],
-    marginTop: S[2],
+    paddingVertical: S[4],
   },
-  clearText: {
-    fontFamily: FONT.sansMed,
-    fontSize: FONT.sm,
-    color: C.rose,
+  clearDoneText: {
+    fontSize: FONT.sm, fontWeight: '500',
+    color: C.danger,
   },
-  grid: {
+
+  // Favorites grid
+  favGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: S[3],
   },
-  historyItem: {
+
+  // History
+  historyRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: C.bgSurface,
-    borderRadius: R.lg,
-    paddingHorizontal: S[4],
     paddingVertical: S[3],
-    marginBottom: S[2],
-    borderWidth: 1,
-    borderColor: C.rim,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
     gap: S[3],
   },
-  historyDot: {
-    width: 7, height: 7, borderRadius: 4,
-    backgroundColor: C.brand,
+  historyThumb: {
+    width: 44, height: 44,
+    borderRadius: R.chip,
+    resizeMode: 'cover',
+  },
+  historyIngredients: {
+    fontSize: FONT.sm, fontWeight: '500',
+    color: C.ink,
   },
   historyDate: {
-    fontFamily: FONT.sansSemiBold,
-    fontSize: FONT.sm, color: C.ink700,
-  },
-  historySub: {
-    fontFamily: FONT.sans,
-    fontSize: FONT.xs, color: C.ink400, marginTop: 2,
+    fontSize: FONT.xs, fontWeight: '400',
+    color: C.inkTer,
+    marginTop: 2,
   },
 });
 
-// ── Detail Styles ─────────────────────────────────────────────────────────────
+// ── Recipe Detail ─────────────────────────────────────────────────────────────
 const de = StyleSheet.create({
   nav: {
     position: 'absolute', top: 0, left: 0, right: 0,
@@ -2681,107 +2320,92 @@ const de = StyleSheet.create({
     zIndex: 10,
   },
   navBtn: {
-    width: 42, height: 42, borderRadius: 21,
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.32)',
     justifyContent: 'center', alignItems: 'center',
   },
-  card: {
-    backgroundColor: C.bgBase,
-    paddingHorizontal: S[6],
+
+  content: {
+    paddingHorizontal: S[5],
     paddingTop: S[5],
   },
-  tagRow: {
-    flexDirection: 'row',
-    gap: S[2],
-    marginBottom: S[3],
-    flexWrap: 'wrap',
-  },
-  tag: {
-    backgroundColor: C.bgSubtle,
-    borderRadius: R.full,
-    paddingHorizontal: S[3],
-    paddingVertical: S[1] + 2,
-  },
-  tagText: {
-    fontFamily: FONT.sansSemiBold,
-    fontSize: FONT.xs, color: C.ink500,
-  },
   title: {
-    fontFamily: FONT.serif,
-    fontSize: FONT['3xl'],
-    color: C.ink900,
-    lineHeight: FONT['3xl'] * FONT.tight2,
-    letterSpacing: FONT.tight,
-    marginBottom: S[4],
+    fontSize: 24, fontWeight: '700',
+    color: C.ink,
+    letterSpacing: -0.5,
+    lineHeight: 24 * 1.25,
+    marginBottom: S[3],
   },
-  matchRow: {
+  chipRow: {
+    flexDirection: 'row', flexWrap: 'wrap',
+    gap: S[2], marginBottom: S[5],
+  },
+  chip: {
+    paddingHorizontal: S[3], paddingVertical: S[1] + 2,
+    borderRadius: R.chip,
+    borderWidth: 1, borderColor: C.border,
+  },
+  chipText: {
+    fontSize: FONT.xs, fontWeight: '500',
+    color: C.inkSub,
+  },
+  chipReady: {
+    backgroundColor: C.successBg, borderColor: C.successBg,
+  },
+  chipMissing: {
+    backgroundColor: C.amberBg, borderColor: `${C.amber}30`,
+  },
+
+  cookBtn: {
+    height: 52, borderRadius: R.btn,
+    backgroundColor: C.accent,
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: S[3],
-    backgroundColor: C.bgSurface,
-    borderRadius: R.lg,
-    padding: S[4],
-    marginBottom: S[5],
-    borderWidth: 1,
-    borderColor: C.rim,
+    alignItems: 'center', justifyContent: 'center',
+    gap: S[2],
   },
-  matchText: {
-    flex: 1,
-    fontFamily: FONT.sansMed,
-    fontSize: FONT.sm, color: C.ink500,
+  cookBtnText: {
+    fontSize: FONT.md, fontWeight: '600',
+    color: '#fff',
   },
-  readyPill: {
-    backgroundColor: C.emeraldBg,
-    borderRadius: R.full,
-    paddingHorizontal: S[3],
-    paddingVertical: 4,
-  },
-  readyPillText: {
-    fontFamily: FONT.sansBold,
-    fontSize: FONT.xs, color: C.emeraldText,
-  },
+
+  // Missing
   missingCard: {
     backgroundColor: C.amberBg,
-    borderRadius: R.xl,
+    borderRadius: R.card,
     padding: S[4],
     marginBottom: S[5],
-    borderWidth: 1,
-    borderColor: `${C.amber}30`,
+    borderWidth: 1, borderColor: `${C.amber}25`,
   },
-  missingHeader: {
-    flexDirection: 'row', alignItems: 'center', gap: S[2], marginBottom: S[3],
-  },
-  missingTitle: {
-    fontFamily: FONT.sansBold,
-    fontSize: FONT.sm, color: C.amberText,
-  },
-  missingPill: {
-    backgroundColor: C.bgSurface,
-    borderRadius: R.full,
-    paddingHorizontal: S[3],
-    paddingVertical: S[1] + 2,
-    borderWidth: 1,
-    borderColor: `${C.amber}40`,
-  },
-  missingPillText: {
-    fontFamily: FONT.sansMed,
-    fontSize: FONT.sm, color: C.ink700,
-  },
-  addToListBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: S[2],
+  missingSectionTitle: {
+    fontSize: FONT.sm, fontWeight: '600',
+    color: C.amberText,
+    letterSpacing: FONT.cap,
   },
   addToListText: {
-    fontFamily: FONT.sansSemiBold,
-    fontSize: FONT.sm, color: C.brand,
+    fontSize: FONT.sm, fontWeight: '600',
+    color: C.accent,
   },
+  missingPill: {
+    paddingHorizontal: S[3], paddingVertical: 5,
+    borderRadius: R.chip,
+    backgroundColor: C.white,
+    borderWidth: 1, borderColor: `${C.amber}30`,
+  },
+  missingPillText: {
+    fontSize: FONT.sm, fontWeight: '500',
+    color: C.ink,
+  },
+
   section: { marginBottom: S[6] },
   sectionTitle: {
-    fontFamily: FONT.sansBold,
-    fontSize: FONT.md,
-    color: C.ink900,
-    letterSpacing: FONT.snug,
+    fontSize: FONT.sm, fontWeight: '600',
+    color: C.inkTer,
+    letterSpacing: FONT.cap,
+    textTransform: 'uppercase',
     marginBottom: S[3],
   },
+
+  // Ingredients list
   ingRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2789,232 +2413,195 @@ const de = StyleSheet.create({
     gap: S[3],
   },
   ingRowBorder: {
-    borderBottomWidth: 1, borderBottomColor: C.rimSubtle,
+    borderBottomWidth: 1, borderBottomColor: C.border,
   },
-  ingStatus: {
-    width: 22, height: 22, borderRadius: 11,
+  ingDot: {
+    width: 20, height: 20, borderRadius: 10,
     justifyContent: 'center', alignItems: 'center',
   },
   ingMeasure: {
-    width: 88,
-    fontFamily: FONT.sansSemiBold,
-    fontSize: FONT.sm, color: C.ink400,
+    width: 80,
+    fontSize: FONT.sm, fontWeight: '600',
+    color: C.inkSub,
   },
   ingName: {
     flex: 1,
-    fontFamily: FONT.sans,
-    fontSize: FONT.base, color: C.ink700,
+    fontSize: FONT.base, fontWeight: '400',
+    color: C.ink,
   },
+
+  // Steps
   stepRow: {
     flexDirection: 'row',
     gap: S[3],
     marginBottom: S[4],
   },
-  stepNum: {
-    width: 28, height: 28, borderRadius: 14,
-    backgroundColor: C.brand,
+  stepNumBadge: {
+    width: 24, height: 24, borderRadius: 12,
+    backgroundColor: C.accent,
     justifyContent: 'center', alignItems: 'center',
     flexShrink: 0, marginTop: 2,
   },
   stepNumText: {
-    fontFamily: FONT.sansBold,
-    fontSize: FONT.xs, color: '#fff',
+    fontSize: FONT.xs, fontWeight: '700',
+    color: '#fff',
   },
   stepText: {
     flex: 1,
-    fontFamily: FONT.sans,
-    fontSize: FONT.base, color: C.ink700,
-    lineHeight: FONT.base * FONT.loose,
+    fontSize: FONT.base, fontWeight: '400',
+    color: C.ink,
+    lineHeight: FONT.base * 1.6,
   },
-  actions: {
-    gap: S[3], marginBottom: S[6],
-  },
-  cookBtn: {
-    flexDirection: 'row',
-    alignItems: 'center', justifyContent: 'center',
-    gap: S[2],
-    paddingVertical: S[4] + 2,
-    borderRadius: R.full,
-    ...SHADOW.md,
-  },
-  cookBtnText: {
-    fontFamily: FONT.sansBold,
-    fontSize: FONT.md, color: '#fff',
-    letterSpacing: FONT.snug,
-  },
+
+  // Secondary actions
   secActions: {
     flexDirection: 'row', gap: S[2],
+    marginTop: S[2], marginBottom: S[6],
   },
   secBtn: {
-    flex: 1,
-    flexDirection: 'row',
+    flex: 1, flexDirection: 'row',
     alignItems: 'center', justifyContent: 'center',
     gap: S[2],
-    paddingVertical: S[4],
-    borderRadius: R.lg,
-    backgroundColor: C.bgSurface,
-    borderWidth: 1.5, borderColor: C.rim,
+    paddingVertical: S[3] + 2,
+    borderRadius: R.btn,
+    backgroundColor: C.surface,
+    borderWidth: 1, borderColor: C.border,
   },
   secBtnText: {
-    fontFamily: FONT.sansSemiBold,
-    fontSize: FONT.base, color: C.brand,
+    fontSize: FONT.base, fontWeight: '600',
+    color: C.accent,
   },
 });
 
-// ── Cook Mode Styles ──────────────────────────────────────────────────────────
+// ── Cook Mode ─────────────────────────────────────────────────────────────────
 const cm = StyleSheet.create({
-  root: {
-    flex: 1, backgroundColor: C.dark,
+  root: { flex: 1, backgroundColor: C.white },
+
+  progressTrack: {
+    height: 2,
+    backgroundColor: C.border,
+    overflow: 'hidden',
   },
+  progressFill: {
+    height: '100%',
+    backgroundColor: C.accent,
+  },
+
   topBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: S[6],
+    paddingHorizontal: S[5],
     paddingVertical: S[4],
   },
   stepLabel: {
-    fontFamily: FONT.sansBold,
-    fontSize: FONT.xs, color: C.darkSage,
-    letterSpacing: FONT.wider,
+    fontSize: FONT.sm, fontWeight: '600',
+    color: C.inkTer,
+    letterSpacing: FONT.cap,
   },
   closeBtn: {
-    width: 34, height: 34, borderRadius: 17,
-    backgroundColor: 'rgba(124,184,152,0.1)',
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: C.surface,
     justifyContent: 'center', alignItems: 'center',
   },
-  progressTrack: {
-    marginHorizontal: S[6],
-    height: 2,
-    backgroundColor: 'rgba(124,184,152,0.15)',
-    borderRadius: 1,
-    overflow: 'hidden',
-    marginBottom: S[3],
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: C.darkSage,
-    borderRadius: 1,
-  },
+
   recipeName: {
-    fontFamily: FONT.sansMed,
-    fontSize: FONT.xs,
-    color: C.darkTextSub,
-    paddingHorizontal: S[6],
-    marginBottom: S[4],
-    textTransform: 'uppercase',
-    letterSpacing: FONT.wider,
-  },
-  dotsRow: {
-    flexDirection: 'row',
-    gap: 6,
-    paddingHorizontal: S[6],
+    fontSize: FONT.sm, fontWeight: '500',
+    color: C.inkTer,
+    paddingHorizontal: S[5],
     marginBottom: S[6],
-    flexWrap: 'wrap',
+    textTransform: 'uppercase',
+    letterSpacing: FONT.cap,
   },
-  dot: {
-    width: 6, height: 6, borderRadius: 3,
-    backgroundColor: 'rgba(124,184,152,0.2)',
-  },
-  dotActive: {
-    backgroundColor: C.darkSage,
-    width: 18,
-  },
-  dotDone: {
-    backgroundColor: `${C.darkSage}50`,
-  },
+
   stepContent: {
     flex: 1,
-    paddingHorizontal: S[6],
+    paddingHorizontal: S[8],
     justifyContent: 'center',
   },
   stepText: {
-    fontFamily: FONT.sansMed,
-    fontSize: FONT.xl + 2,
-    color: C.darkText,
-    lineHeight: (FONT.xl + 2) * FONT.loose,
-    letterSpacing: FONT.snug,
+    fontSize: FONT.xl, fontWeight: '500',
+    color: C.ink,
+    lineHeight: FONT.xl * 1.55,
+    textAlign: 'center',
   },
+
   navRow: {
     flexDirection: 'row',
-    paddingHorizontal: S[6],
+    paddingHorizontal: S[5],
     paddingTop: S[5],
     gap: S[3],
-  },
-  navBtnWrap: { flex: 1 },
-  navBtnSecondary: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center', justifyContent: 'center',
-    gap: S[2],
-    paddingVertical: S[4],
-    borderRadius: R.full,
-    backgroundColor: 'rgba(124,184,152,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(124,184,152,0.15)',
-  },
-  navBtnSecondaryText: {
-    fontFamily: FONT.sansSemiBold,
-    fontSize: FONT.base, color: C.darkSage,
-  },
-  navBtnPrimary: {
-    flexDirection: 'row',
-    alignItems: 'center', justifyContent: 'center',
-    gap: S[2],
-    paddingVertical: S[4],
-    borderRadius: R.full,
-    ...SHADOW.md,
-  },
-  navBtnPrimaryText: {
-    fontFamily: FONT.sansBold,
-    fontSize: FONT.md, color: '#fff',
-  },
-  exitBtn: {
-    marginHorizontal: S[6],
-    paddingVertical: S[4],
-    borderRadius: R.full,
-    backgroundColor: 'rgba(124,184,152,0.1)',
     alignItems: 'center',
   },
+  navBack: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: S[1],
+    paddingVertical: S[4],
+    paddingRight: S[3],
+  },
+  navBackText: {
+    fontSize: FONT.base, fontWeight: '500',
+    color: C.inkSub,
+  },
+  navNextWrap: { flex: 1 },
+  navNext: {
+    flex: 1, height: 52,
+    backgroundColor: C.accent,
+    borderRadius: R.btn,
+    flexDirection: 'row',
+    alignItems: 'center', justifyContent: 'center',
+    gap: S[2],
+  },
+  navNextText: {
+    fontSize: FONT.md, fontWeight: '600',
+    color: '#fff',
+  },
+
+  // Done state
+  doneCheck: {
+    width: 80, height: 80, borderRadius: 40,
+    backgroundColor: C.successBg,
+    justifyContent: 'center', alignItems: 'center',
+    marginBottom: S[5],
+  },
+  doneTitle: {
+    fontSize: FONT.xl, fontWeight: '700',
+    color: C.ink,
+    marginBottom: S[3],
+  },
+  doneLink: {
+    fontSize: FONT.base, fontWeight: '600',
+    color: C.accent,
+  },
+
+  // No steps
+  exitBtn: {
+    marginHorizontal: S[5],
+    paddingVertical: S[4],
+    borderRadius: R.btn,
+    backgroundColor: C.surface,
+    alignItems: 'center',
+    borderWidth: 1, borderColor: C.border,
+  },
   exitBtnText: {
-    fontFamily: FONT.sansSemiBold,
-    fontSize: FONT.base, color: C.darkSage,
+    fontSize: FONT.base, fontWeight: '600',
+    color: C.inkSub,
   },
 });
 
-// ── Tab Bar Styles ────────────────────────────────────────────────────────────
+// ── Tab Bar ───────────────────────────────────────────────────────────────────
 const tb = StyleSheet.create({
-  dark: {
-    position: 'absolute',
-    backgroundColor: 'rgba(8,13,10,0.96)',
-    borderTopWidth: 0,
-    height: 84,
-    paddingTop: S[2],
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 24,
-    elevation: 16,
-    borderTopColor: 'rgba(124,184,152,0.08)',
-  },
-  light: {
-    position: 'absolute',
-    backgroundColor: 'rgba(245,241,234,0.96)',
+  bar: {
+    backgroundColor: C.white,
     borderTopWidth: 1,
-    borderTopColor: C.rimSubtle,
+    borderTopColor: C.border,
     height: 84,
     paddingTop: S[2],
-    shadowColor: '#1A0F00',
-    shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.07,
-    shadowRadius: 20,
-    elevation: 12,
-    borderTopLeftRadius: R['2xl'],
-    borderTopRightRadius: R['2xl'],
   },
   label: {
-    fontFamily: FONT.sansSemiBold,
     fontSize: 10,
+    fontWeight: '500',
     marginTop: 2,
   },
 });

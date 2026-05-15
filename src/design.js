@@ -1,107 +1,69 @@
-// ─── Design System — FoodLens ────────────────────────────────────────────────
-// Single source of truth for all visual tokens.
-// Inspired by Linear, Stripe, and Apple HIG.
+// ─── Design System — FoodLens "Everyday Kitchen" ─────────────────────────────
+// Clean break from the forest green / ivory editorial direction.
+// One accent, borders over shadows, system fonts, 8pt grid.
 
 // ─── Color Tokens ─────────────────────────────────────────────────────────────
 export const C = {
-  // Backgrounds — warm ivory palette
-  bgBase:      '#F5F1EA',   // warm ivory page background
-  bgSurface:   '#FFFFFF',   // card surface
-  bgSubtle:    '#EDE9E1',   // section / input background
-  bgInverse:   '#0A0F0C',   // dark inversion
-
-  // Dark theme (Scan + Cook screens)
-  dark:        '#080D0A',   // deepest background
-  darkSurface: '#0E1812',   // card surface on dark
-  darkRim:     '#172218',   // elevated surface
-  darkBorder:  'rgba(160,200,175,0.1)',
-  darkDivider: 'rgba(160,200,175,0.06)',
-  darkSage:    '#7CB898',   // muted sage accent on dark
-  darkText:    '#DDE9E2',   // primary text on dark
-  darkTextSub: '#607A6B',   // secondary text on dark
-
-  // Brand — forest green
-  brand:       '#1A3D2A',   // primary CTA, active states
-  brandMid:    '#236640',   // hover, pressed
-  brandLight:  '#35875A',   // lighter variant
-  brandTint:   '#E5F2EB',   // very light brand background
-  brandBorder: '#B8DDCA',   // brand-tinted border
+  // Backgrounds
+  white:       '#FFFFFF',       // all screen backgrounds
+  surface:     '#F8F8F7',       // faintest warm gray (segmented control container)
+  border:      '#EBEBEA',       // 1px borders throughout
 
   // Text hierarchy
-  ink900:      '#0B0906',   // headlines
-  ink700:      '#2D2920',   // primary body
-  ink500:      '#6A6259',   // secondary
-  ink400:      '#8C847B',   // placeholder
-  ink300:      '#ACA49C',   // disabled, tertiary
-  ink100:      '#D4CEC7',   // very subtle
+  ink:         '#1A1A18',       // primary text
+  inkSub:      '#6B6B67',       // secondary text
+  inkTer:      '#A8A8A4',       // tertiary, placeholder, inactive icons
 
-  // Borders & Dividers
-  rim:         '#E4DED7',   // default border
-  rimSubtle:   '#EDE9E2',   // subtle border
+  // Accent — vivid warm orange-red (ONE bold color, used strictly)
+  accent:      '#FF5C2B',       // primary CTA, active states, scan trigger
+  accentTint:  '#FFF0EB',       // chip backgrounds, subtle fills (~8% opacity)
+  accentDim:   '#FFCBB8',       // empty match dots, inactive indicators
 
-  // Status — match indicator
-  emerald:     '#1A9E52',   // ready/matched (vivid green)
-  emeraldDim:  '#C4DED0',   // empty dot / unmatched
-  emeraldBg:   '#EDFAF4',   // ready chip background
-  emeraldText: '#0F6633',   // ready chip text
+  // Status
+  danger:      '#E53E3E',
+  dangerBg:    '#FFF1F1',
+  success:     '#22A45D',
+  successBg:   '#EDFAF4',
+  successText: '#166534',
 
-  // Status — warning
-  amber:       '#D97706',
-  amberBg:     '#FEF3C7',
-  amberText:   '#924D00',
-
-  // Destructive
-  rose:        '#DC2626',
-  roseBg:      '#FEF2F2',
-  roseText:    '#991B1B',
+  // Amber (missing ingredients)
+  amber:       '#B45309',
+  amberBg:     '#FFFBEB',
+  amberText:   '#92400E',
 };
 
-// ─── Typography ───────────────────────────────────────────────────────────────
+// ─── Typography — system fonts, no loading gate ───────────────────────────────
+// Use fontWeight only (no fontFamily). Both platforms default to their
+// system font: SF Pro on iOS, Roboto on Android.
 export const FONT = {
-  // Families
-  serif:       'Playfair-Bold',
-  serifSemi:   'Playfair-SemiBold',
-  sans:        'Inter-Regular',
-  sansMed:     'Inter-Medium',
-  sansSemi:    'Inter-SemiBold',
-  sansBold:    'Inter-Bold',
+  // Sizes
+  xs:    12,   // caption, chip labels
+  sm:    13,   // section headers (uppercase), supporting text
+  base:  15,   // body text
+  md:    17,   // card titles
+  lg:    20,   // reserved
+  xl:    22,   // screen titles (scan)
+  '2xl': 28,   // screen titles (kitchen)
+  hero:  48,   // big stat numbers
 
-  // Size scale (Major Third — 1.250 ratio)
-  xs:    11,
-  sm:    13,
-  base:  15,
-  md:    17,
-  lg:    20,
-  xl:    24,
-  '2xl': 29,
-  '3xl': 35,
-  '4xl': 42,
-
-  // Tracking
-  tight:  -0.5,
-  snug:   -0.3,
+  // Letter spacing
+  tight:  -0.8,  // hero numbers, screen titles
+  snug:   -0.2,  // card titles
   normal:  0,
-  wide:    0.3,
-  wider:   0.8,
-
-  // Leading multipliers
-  none:   1.0,
-  tight2: 1.2,
-  snug2:  1.35,
-  normal2:1.5,
-  loose:  1.7,
+  cap:     0.6,  // uppercase section headers (13px UPPERCASE)
+  wide:    0.1,  // chip labels
 };
 
 // ─── Spacing (8pt grid) ───────────────────────────────────────────────────────
 export const S = {
-  '1': 4,
-  '2': 8,
-  '3': 12,
-  '4': 16,
-  '5': 20,
-  '6': 24,
-  '7': 28,
-  '8': 32,
+  '1':  4,
+  '2':  8,
+  '3':  12,
+  '4':  16,
+  '5':  20,   // screen horizontal padding
+  '6':  24,   // stack gap between sections
+  '7':  28,
+  '8':  32,
   '10': 40,
   '12': 48,
   '16': 64,
@@ -109,61 +71,26 @@ export const S = {
 
 // ─── Border Radius ────────────────────────────────────────────────────────────
 export const R = {
-  sm:   8,
-  md:   12,
-  lg:   16,
-  xl:   20,
+  chip:  8,    // chips, tags — rectangular, editorial
+  sm:    8,
+  btn:   12,   // buttons — not pill, not square
+  md:    12,
+  card:  16,   // cards
+  lg:    16,
+  xl:    20,
+  sheet: 24,   // bottom sheets / modals
   '2xl': 24,
-  '3xl': 32,
-  full: 9999,
+  full:  9999,
 };
 
-// ─── Shadows ──────────────────────────────────────────────────────────────────
+// ─── Shadows — nearly none ────────────────────────────────────────────────────
+// Borders over shadows. Only floating elements (sheets, FABs) get shadow.
 export const SHADOW = {
-  xs: {
-    shadowColor: '#1A0F00',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 1,
-  },
-  sm: {
-    shadowColor: '#1A0F00',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  md: {
-    shadowColor: '#1A0F00',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.09,
-    shadowRadius: 12,
-    elevation: 4,
-  },
-  lg: {
-    shadowColor: '#1A0F00',
+  float: {
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.11,
+    shadowOpacity: 0.10,
     shadowRadius: 24,
     elevation: 8,
   },
-};
-
-// ─── Spring Configs (Reanimated) ──────────────────────────────────────────────
-export const SPRING = {
-  default: { damping: 20, stiffness: 280, mass: 1 },
-  snappy:  { damping: 22, stiffness: 380, mass: 0.8 },
-  bouncy:  { damping: 14, stiffness: 220, mass: 1 },
-  gentle:  { damping: 28, stiffness: 180, mass: 1 },
-  slow:    { damping: 35, stiffness: 120, mass: 1 },
-};
-
-// ─── Timing ───────────────────────────────────────────────────────────────────
-export const TIMING = {
-  instant: 80,
-  fast:    160,
-  normal:  280,
-  slow:    450,
-  verySlow:700,
 };
