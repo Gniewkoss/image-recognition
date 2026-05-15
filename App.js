@@ -1,5 +1,5 @@
 /**
- * FoodLens — "Everyday Kitchen" Redesign
+ * FoodLens — "Everyday Kitchen" v2
  * Stack: Expo SDK 54 · React Native Animated · System fonts · expo-haptics
  */
 
@@ -83,14 +83,13 @@ function Press({ onPress, style, children, scale = 0.97, hapticType = 'light', d
   );
 }
 
-// ─── Three Dots — iMessage-style loading indicator ───────────────────────────
+// ─── Three Dots loading indicator ────────────────────────────────────────────
 
 function ThreeDots() {
   const vals = useRef([0, 1, 2].map(() => new Animated.Value(0.3))).current;
 
   useEffect(() => {
     let running = true;
-
     function cycle() {
       if (!running) return;
       Animated.sequence([
@@ -104,7 +103,6 @@ function ThreeDots() {
       ]).start(() => { if (running) cycle(); });
     }
     cycle();
-
     return () => { running = false; };
   }, []);
 
@@ -113,10 +111,7 @@ function ThreeDots() {
       {vals.map((v, i) => (
         <Animated.View
           key={i}
-          style={{
-            width: 8, height: 8, borderRadius: 4,
-            backgroundColor: C.accent, opacity: v,
-          }}
+          style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: C.accent, opacity: v }}
         />
       ))}
     </View>
@@ -160,7 +155,8 @@ function SectionHeader({ text, right }) {
 function RecipeCard({ recipe, onPress, onFavorite, isFavorited }) {
   const isReady = recipe.missing_count === 0;
   const total   = (recipe.matched_count || 0) + (recipe.missing_count || 0);
-  const filled  = Math.min(5, Math.max(0, Math.round((recipe.match_percent || 0) / 20)));
+  const pct     = Math.round(recipe.match_percent || 0);
+  const filled  = Math.min(5, Math.max(0, Math.round(pct / 20)));
 
   return (
     <Press onPress={onPress} scale={0.985} style={ui.card}>
@@ -173,6 +169,14 @@ function RecipeCard({ recipe, onPress, onFavorite, isFavorited }) {
             <Text style={{ fontSize: 48 }}>{recipe.emoji || '🍽️'}</Text>
           </View>
         )}
+
+        {/* Match % badge */}
+        {pct > 0 && (
+          <View style={[ui.cardMatchBadge, isReady && ui.cardMatchBadgeReady]}>
+            <Text style={ui.cardMatchBadgeText}>{pct}%</Text>
+          </View>
+        )}
+
         {/* Favorite */}
         <TouchableOpacity
           style={ui.cardFavBtn}
@@ -182,7 +186,7 @@ function RecipeCard({ recipe, onPress, onFavorite, isFavorited }) {
           <Ionicons
             name={isFavorited ? 'heart' : 'heart-outline'}
             size={20}
-            color={isFavorited ? C.danger : '#fff'}
+            color={isFavorited ? '#ff4d6d' : '#fff'}
           />
         </TouchableOpacity>
       </View>
@@ -192,24 +196,27 @@ function RecipeCard({ recipe, onPress, onFavorite, isFavorited }) {
         <Text style={ui.cardTitle} numberOfLines={2}>{recipe.name}</Text>
 
         <View style={ui.cardMetaRow}>
-          {/* Match dots as unicode */}
-          <Text style={ui.cardDots}>
-            {[0,1,2,3,4].map(i => (
-              <Text key={i} style={{ color: i < filled ? C.accent : C.accentDim }}>
-                {i < filled ? '●' : '○'}
-              </Text>
+          <View style={ui.dotsRow}>
+            {[0, 1, 2, 3, 4].map(i => (
+              <View
+                key={i}
+                style={[ui.dot, { backgroundColor: i < filled ? C.accent : C.accentDim }]}
+              />
             ))}
-          </Text>
+          </View>
           {total > 0 && (
             <Text style={ui.cardMetaText}>{recipe.matched_count}/{total} ingredients</Text>
           )}
         </View>
 
-        {/* Tags row */}
         <View style={ui.cardTagRow}>
           {recipe.area && <View style={ui.cardTag}><Text style={ui.cardTagText}>{recipe.area}</Text></View>}
           {recipe.category && <View style={ui.cardTag}><Text style={ui.cardTagText}>{recipe.category}</Text></View>}
-          {isReady && <View style={[ui.cardTag, ui.cardTagReady]}><Text style={[ui.cardTagText, { color: C.successText }]}>Ready</Text></View>}
+          {isReady && (
+            <View style={[ui.cardTag, ui.cardTagReady]}>
+              <Text style={[ui.cardTagText, { color: C.successText }]}>✓ Ready</Text>
+            </View>
+          )}
         </View>
 
         {recipe.missing_count > 0 && recipe.missing_ingredients?.length > 0 && (
@@ -235,7 +242,6 @@ function GridCard({ recipe, onPress }) {
           <Text style={{ fontSize: 28 }}>{recipe.emoji || '🍽️'}</Text>
         </View>
       )}
-      {/* Gradient overlay — text on image */}
       <View style={ui.gridCardOverlay}>
         <Text style={ui.gridCardTitle} numberOfLines={2}>{recipe.name}</Text>
       </View>
@@ -254,7 +260,6 @@ function ApiKeyModal({ visible, onClose, value, onChange, onSave }) {
       >
         <View style={ui.modalSheet}>
           <View style={ui.modalHandle} />
-
           <View style={ui.modalIconRow}>
             <View style={ui.modalIconBg}>
               <Ionicons name="key-outline" size={22} color={C.accent} />
@@ -297,26 +302,57 @@ function ScanScreen({ navigation }) {
   const [ingredients, setIngredients] = useState([]);
   const [recipes, setRecipes]         = useState([]);
   const [lastDate, setLastDate]       = useState(null);
-  const [phase, setPhase]             = useState('idle'); // idle | analyzing | found | searching
+  const [phase, setPhase]             = useState('idle');
   const [apiKey, setApiKey]           = useState('');
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [tempKey, setTempKey]         = useState('');
   const insets = useSafeAreaInsets();
 
+  const fadeIn  = useRef(new Animated.Value(0)).current;
+  const slideUp = useRef(new Animated.Value(22)).current;
+  const pulse   = useRef(new Animated.Value(1)).current;
+  const pulseLoop = useRef(null);
+
   const isLoading  = phase !== 'idle';
   const hasResults = recipes.length > 0 && !isLoading;
 
   const loadingLabel =
-    phase === 'analyzing' ? 'Scanning ingredients…'
-    : phase === 'found'   ? `Found ${ingredients.length} ingredients!`
-    : phase === 'searching' ? 'Finding recipes…'
+    phase === 'analyzing'  ? 'Scanning ingredients…'
+    : phase === 'found'    ? `Found ${ingredients.length} ingredients!`
+    : phase === 'searching'? 'Finding recipes…'
     : '';
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeIn,  { toValue: 1, duration: 400, useNativeDriver: true }),
+      Animated.spring(slideUp, { toValue: 0, speed: 14, bounciness: 5, useNativeDriver: true }),
+    ]).start();
+
+    pulseLoop.current = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1.07, duration: 1500, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1,    duration: 1500, useNativeDriver: true }),
+      ])
+    );
+    pulseLoop.current.start();
+    return () => pulseLoop.current?.stop();
+  }, []);
+
+  useEffect(() => {
+    if (isLoading) pulseLoop.current?.stop();
+    else           pulseLoop.current?.start();
+  }, [isLoading]);
 
   useEffect(() => { loadData(); }, []);
   useEffect(() => {
     const unsub = navigation.addListener('focus', loadData);
     return unsub;
   }, [navigation]);
+
+  function openKeyModal() {
+    setTempKey(apiKey); // pre-fill with existing key
+    setShowKeyModal(true);
+  }
 
   async function loadData() {
     try {
@@ -343,7 +379,7 @@ function ScanScreen({ navigation }) {
   }
 
   async function startScan(useCamera) {
-    if (!apiKey) { setShowKeyModal(true); return; }
+    if (!apiKey) { openKeyModal(); return; }
     haptic.medium();
 
     const perm = useCamera
@@ -441,30 +477,41 @@ function ScanScreen({ navigation }) {
         <View style={{ height: safeTop }} />
 
         <View style={sc.header}>
-          <Text style={sc.headerTitle}>FoodLens</Text>
-          <TouchableOpacity
-            style={sc.settingsBtn}
-            onPress={() => { haptic.light(); setShowKeyModal(true); }}
-          >
+          <View style={sc.logoRow}>
+            <View style={sc.logoDot} />
+            <Text style={sc.headerTitle}>FoodLens</Text>
+          </View>
+          <TouchableOpacity style={sc.settingsBtn} onPress={openKeyModal}>
             <Ionicons name="settings-outline" size={20} color={C.inkTer} />
           </TouchableOpacity>
         </View>
 
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
-          {/* Found count row */}
-          <View style={sc.foundRow}>
-            <Text style={sc.foundCount}>
-              Found{' '}
-              <Text style={sc.foundBold}>{ingredients.length} ingredients</Text>
-            </Text>
-            <TouchableOpacity
-              onPress={() => navigation.navigate('Results', { recipes, ingredients })}
-            >
-              <Text style={sc.seeRecipesBtn}>See {recipes.length} recipes →</Text>
-            </TouchableOpacity>
+
+          {/* Results summary card */}
+          <View style={sc.resultCard}>
+            <View style={sc.resultCardTop}>
+              <View>
+                <Text style={sc.resultCount}>{recipes.length}</Text>
+                <Text style={sc.resultLabel}>{recipes.length === 1 ? 'recipe found' : 'recipes found'}</Text>
+              </View>
+              <View style={sc.resultRight}>
+                <Text style={sc.resultIngCount}>{pluralize(ingredients.length, 'ingredient')}</Text>
+                {lastDate && <Text style={sc.resultDate}>{formatScanDate(lastDate)}</Text>}
+              </View>
+            </View>
+            <Press onPress={() => navigation.navigate('Results', { recipes, ingredients })} hapticType="medium">
+              <View style={sc.resultViewBtn}>
+                <Text style={sc.resultViewBtnText}>View All Recipes</Text>
+                <Ionicons name="arrow-forward" size={16} color="#fff" />
+              </View>
+            </Press>
           </View>
 
-          {/* Ingredient chips horizontal scroll */}
+          {/* Detected ingredients */}
+          <View style={{ paddingHorizontal: S[5], marginBottom: S[3] }}>
+            <Text style={sc.sectionLabel}>DETECTED INGREDIENTS</Text>
+          </View>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -478,7 +525,7 @@ function ScanScreen({ navigation }) {
             ))}
           </ScrollView>
 
-          {/* Scan again */}
+          {/* Actions */}
           <View style={{ paddingHorizontal: S[5], gap: S[3] }}>
             <Press onPress={() => startScan(true)} hapticType="medium">
               <View style={sc.btnAccent}>
@@ -486,14 +533,16 @@ function ScanScreen({ navigation }) {
                 <Text style={sc.btnAccentText}>Scan Again</Text>
               </View>
             </Press>
-            <Press onPress={() => startScan(false)}>
-              <View style={sc.btnOutline}>
-                <Text style={sc.btnOutlineText}>Choose Photo</Text>
-              </View>
-            </Press>
-            <TouchableOpacity style={sc.clearBtn} onPress={clearResults}>
-              <Text style={sc.clearBtnText}>Clear results</Text>
-            </TouchableOpacity>
+            <View style={sc.btnSmallRow}>
+              <Press onPress={() => startScan(false)} style={{ flex: 1 }}>
+                <View style={sc.btnSecSmall}>
+                  <Text style={sc.btnSecSmallText}>Choose Photo</Text>
+                </View>
+              </Press>
+              <TouchableOpacity style={[sc.btnSecSmall, { flex: 1 }]} onPress={clearResults}>
+                <Text style={[sc.btnSecSmallText, { color: C.inkTer }]}>Clear Results</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </ScrollView>
 
@@ -511,72 +560,98 @@ function ScanScreen({ navigation }) {
       <StatusBar style="dark" />
       <View style={{ height: safeTop }} />
 
+      {/* Header */}
       <View style={sc.header}>
-        <Text style={sc.headerTitle}>FoodLens</Text>
+        <View style={sc.logoRow}>
+          <View style={sc.logoDot} />
+          <Text style={sc.headerTitle}>FoodLens</Text>
+        </View>
         <TouchableOpacity
-          style={sc.settingsBtn}
-          onPress={() => { haptic.light(); setShowKeyModal(true); }}
+          style={[sc.settingsBtn, !apiKey && sc.settingsBtnAlert]}
+          onPress={openKeyModal}
         >
-          <Ionicons name="settings-outline" size={20} color={C.inkTer} />
+          <Ionicons
+            name={apiKey ? 'settings-outline' : 'key-outline'}
+            size={20}
+            color={apiKey ? C.inkTer : C.accent}
+          />
         </TouchableOpacity>
       </View>
 
-      <View style={{ flex: 1, paddingHorizontal: S[5] }}>
-        <Text style={sc.screenTitle}>What's in{'\n'}your fridge?</Text>
-        <Text style={sc.screenSub}>
-          Point camera at ingredients or select a photo
-        </Text>
+      <Animated.ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={sc.scrollContent}
+        style={{ flex: 1, opacity: fadeIn }}
+      >
+        {/* Hero */}
+        <Animated.View style={[sc.heroSection, { transform: [{ translateY: slideUp }] }]}>
+          <View style={sc.heroBadge}>
+            <Text style={sc.heroBadgeText}>✦ AI-POWERED KITCHEN ASSISTANT</Text>
+          </View>
+          <Text style={sc.heroTitle}>What's in{'\n'}your fridge?</Text>
+          <Text style={sc.heroSub}>
+            Snap a photo of your ingredients — get instant recipes you can cook right now.
+          </Text>
+        </Animated.View>
 
-        {/* Camera zone */}
+        {/* Scan zone */}
         <TouchableOpacity
-          style={sc.cameraZone}
+          style={sc.scanZone}
           onPress={() => !isLoading && startScan(true)}
-          activeOpacity={isLoading ? 1 : 0.85}
+          activeOpacity={isLoading ? 1 : 0.82}
         >
           {isLoading ? (
-            <View style={sc.cameraZoneInner}>
+            <View style={sc.scanZoneInner}>
               <ThreeDots />
-              <Text style={sc.loadingText}>{loadingLabel}</Text>
+              <Text style={sc.scanLoadingText}>{loadingLabel}</Text>
             </View>
           ) : (
-            <View style={sc.cameraZoneInner}>
-              <Ionicons name="camera-outline" size={32} color={C.inkTer} />
-              <Text style={sc.tapToScanLabel}>Tap to scan</Text>
+            <View style={sc.scanZoneInner}>
+              <Animated.View style={[sc.scanIconRing, { transform: [{ scale: pulse }] }]}>
+                <Ionicons name="camera" size={34} color={C.accent} />
+              </Animated.View>
+              <Text style={sc.scanCardTitle}>Tap to scan</Text>
+              <Text style={sc.scanCardSub}>Opens camera instantly</Text>
             </View>
           )}
         </TouchableOpacity>
 
-        {/* Action buttons */}
-        <View style={sc.btnRow}>
-          <Press
-            onPress={() => startScan(true)}
-            style={{ flex: 1 }}
-            hapticType="medium"
-            disabled={isLoading}
-          >
-            <View style={[sc.btnAccent, isLoading && { opacity: 0.38 }]}>
-              <Text style={sc.btnAccentText}>Take Photo</Text>
+        {/* Feature highlights */}
+        <View style={sc.featureRow}>
+          {[
+            { icon: 'scan-outline',       text: 'Instant scan' },
+            { icon: 'bulb-outline',       text: 'AI detection' },
+            { icon: 'restaurant-outline', text: 'Recipe match' },
+          ].map((f, i) => (
+            <View key={i} style={sc.featureChip}>
+              <Ionicons name={f.icon} size={13} color={C.inkSub} />
+              <Text style={sc.featureChipText}>{f.text}</Text>
             </View>
-          </Press>
-          <Press
-            onPress={() => startScan(false)}
-            style={{ flex: 1 }}
-            disabled={isLoading}
-          >
-            <View style={[sc.btnOutline, isLoading && { opacity: 0.38 }]}>
-              <Text style={sc.btnOutlineText}>Choose Photo</Text>
-            </View>
-          </Press>
+          ))}
         </View>
 
-        <TouchableOpacity
-          style={{ alignItems: 'center', marginTop: S[4] }}
-          onPress={() => navigation.navigate('KitchenTab')}
-          disabled={isLoading}
-        >
-          <Text style={sc.manualLink}>Add manually</Text>
-        </TouchableOpacity>
-      </View>
+        {/* CTA buttons */}
+        <View style={sc.btnStack}>
+          <Press onPress={() => startScan(true)} hapticType="medium" disabled={isLoading}>
+            <View style={[sc.btnPrimary, isLoading && { opacity: 0.38 }]}>
+              <Ionicons name="camera-outline" size={20} color="#fff" />
+              <Text style={sc.btnPrimaryText}>Take Photo</Text>
+            </View>
+          </Press>
+          <View style={sc.btnSmallRow}>
+            <Press onPress={() => startScan(false)} style={{ flex: 1 }} disabled={isLoading}>
+              <View style={[sc.btnSecSmall, isLoading && { opacity: 0.38 }]}>
+                <Text style={sc.btnSecSmallText}>Choose Photo</Text>
+              </View>
+            </Press>
+            <Press onPress={() => navigation.navigate('KitchenTab')} style={{ flex: 1 }} disabled={isLoading}>
+              <View style={sc.btnSecSmall}>
+                <Text style={sc.btnSecSmallText}>Add Manually</Text>
+              </View>
+            </Press>
+          </View>
+        </View>
+      </Animated.ScrollView>
 
       <ApiKeyModal
         visible={showKeyModal} onClose={() => setShowKeyModal(false)}
@@ -645,21 +720,27 @@ function ResultsScreen({ route, navigation }) {
             <Ionicons name="chevron-back" size={22} color={C.ink} />
           </View>
         </Press>
-        <Text style={re.headerTitle}>Recipes for you</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={re.headerTitle}>Recipes for you</Text>
+          {ingredients.length > 0 && (
+            <Text style={re.headerSub}>{pluralize(ingredients.length, 'ingredient')} scanned</Text>
+          )}
+        </View>
         <View style={re.headerBadge}>
           <Text style={re.headerBadgeText}>{recipes.length}</Text>
         </View>
       </View>
 
-      {/* Filter chips — horizontal scroll, instant color swap */}
+      {/* Filter chips */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={re.filterRow}
-        style={{ borderBottomWidth: 1, borderBottomColor: C.border }}
+        style={re.filterBar}
       >
         {FILTER_TABS.map(tab => {
           const isActive = filter === tab.id;
+          const count    = counts[tab.id];
           return (
             <TouchableOpacity
               key={tab.id}
@@ -669,7 +750,7 @@ function ResultsScreen({ route, navigation }) {
             >
               <Text style={[re.filterChipText, isActive && re.filterChipTextActive]}>
                 {tab.label}
-                {counts[tab.id] > 0 ? ` ${counts[tab.id]}` : ''}
+                {count > 0 ? `  ${count}` : ''}
               </Text>
             </TouchableOpacity>
           );
@@ -686,7 +767,7 @@ function ResultsScreen({ route, navigation }) {
           <EmptyState
             icon="search-outline"
             title="No recipes found"
-            subtitle="Try a different filter"
+            subtitle="Try a different filter or scan more ingredients."
             action="Show all"
             onAction={() => setFilter('all')}
           />
@@ -807,17 +888,17 @@ function KitchenScreen({ navigation }) {
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
 
-        {/* Big stat */}
+        {/* Stat card */}
         {loading ? (
-          <View style={{ paddingHorizontal: S[5], marginBottom: S[6] }}>
-            <Text style={ki.statLoading}>Loading ingredients…</Text>
+          <View style={ki.statCard}>
+            <Text style={ki.statLoading}>Loading…</Text>
           </View>
         ) : recipesCount > 0 ? (
           <TouchableOpacity
-            style={{ paddingHorizontal: S[5], marginBottom: S[6] }}
+            style={ki.statCard}
             onPress={async () => {
               haptic.light();
-              const s = await AsyncStorage.getItem(KEYS.recipes);
+              const s  = await AsyncStorage.getItem(KEYS.recipes);
               const si = await AsyncStorage.getItem(KEYS.ingredients);
               if (s) {
                 const p = JSON.parse(s);
@@ -826,34 +907,35 @@ function KitchenScreen({ navigation }) {
             }}
             activeOpacity={0.75}
           >
-            <Text style={ki.statNumber}>{recipesCount}</Text>
-            <Text style={ki.statLabel}>
-              {recipesCount === 1 ? 'recipe ready' : 'recipes ready'}
-            </Text>
-            <Text style={ki.statSub}>
-              From {ingredients.length} ingredient{ingredients.length !== 1 ? 's' : ''}
-              {readyCount > 0 ? ` · ${readyCount} with all ingredients` : ''}
-            </Text>
-            <Text style={ki.updateLink}>Update ingredients</Text>
+            <View style={ki.statCardInner}>
+              <View>
+                <Text style={ki.statNumber}>{recipesCount}</Text>
+                <Text style={ki.statLabel}>{recipesCount === 1 ? 'recipe ready' : 'recipes ready'}</Text>
+                <Text style={ki.statSub}>
+                  From {pluralize(ingredients.length, 'ingredient')}
+                  {readyCount > 0 ? ` · ${readyCount} complete` : ''}
+                </Text>
+              </View>
+              <View style={ki.statArrow}>
+                <Ionicons name="arrow-forward" size={18} color={C.accent} />
+              </View>
+            </View>
+            <TouchableOpacity onPress={() => setShowAdd(true)} hitSlop={{ top: 8, bottom: 8 }}>
+              <Text style={ki.updateLink}>Update ingredients →</Text>
+            </TouchableOpacity>
           </TouchableOpacity>
         ) : (
-          <View style={{ paddingHorizontal: S[5], marginBottom: S[6] }}>
+          <View style={ki.statCard}>
             <Text style={ki.statNumber}>{ingredients.length}</Text>
-            <Text style={ki.statLabel}>
-              {ingredients.length === 1 ? 'ingredient' : 'ingredients'}
-            </Text>
+            <Text style={ki.statLabel}>{ingredients.length === 1 ? 'ingredient' : 'ingredients'}</Text>
             <TouchableOpacity onPress={() => setShowAdd(true)}>
-              <Text style={ki.updateLink}>Add ingredients</Text>
+              <Text style={ki.updateLink}>Add ingredients →</Text>
             </TouchableOpacity>
           </View>
         )}
 
         {/* Ingredients by category */}
-        {loading ? (
-          <View style={{ paddingHorizontal: S[5] }}>
-            <Text style={ki.loadingText}>Loading…</Text>
-          </View>
-        ) : ingredients.length === 0 ? (
+        {loading ? null : ingredients.length === 0 ? (
           <EmptyState
             icon="nutrition-outline"
             title="Your pantry is empty"
@@ -1007,8 +1089,6 @@ function SavedScreen({ navigation }) {
     });
   }
 
-  const uncheckedCount = shoppingList.filter(i => !i.checked).length;
-
   return (
     <View style={sv.root}>
       <StatusBar style="dark" />
@@ -1038,11 +1118,11 @@ function SavedScreen({ navigation }) {
           <View style={sv.tabContent}>
             <View style={sv.sectionActions}>
               {shoppingList.length > 0 && (
-                <TouchableOpacity onPress={shareList}>
-                  <Ionicons name="share-outline" size={20} color={C.inkTer} />
+                <TouchableOpacity onPress={shareList} style={sv.iconAction}>
+                  <Ionicons name="share-outline" size={20} color={C.inkSub} />
                 </TouchableOpacity>
               )}
-              <TouchableOpacity onPress={() => { haptic.light(); setShowInput(v => !v); }}>
+              <TouchableOpacity onPress={() => { haptic.light(); setShowInput(v => !v); }} style={sv.iconAction}>
                 <Ionicons name={showInput ? 'close' : 'add'} size={22} color={C.accent} />
               </TouchableOpacity>
             </View>
@@ -1068,9 +1148,11 @@ function SavedScreen({ navigation }) {
             {loading ? (
               <Text style={sv.loadingText}>Loading…</Text>
             ) : shoppingList.length === 0 ? (
-              <Text style={sv.emptyNote}>
-                Add items here, or save missing ingredients directly from any recipe.
-              </Text>
+              <EmptyState
+                icon="cart-outline"
+                title="Shopping list is empty"
+                subtitle="Add items here, or save missing ingredients from any recipe."
+              />
             ) : (
               <View style={{ gap: 1 }}>
                 {shoppingList.map((item, idx) => (
@@ -1119,9 +1201,13 @@ function SavedScreen({ navigation }) {
             {loading ? (
               <Text style={sv.loadingText}>Loading…</Text>
             ) : favorites.length === 0 ? (
-              <Text style={sv.emptyNote}>
-                Tap the heart on any recipe to save it here.
-              </Text>
+              <EmptyState
+                icon="heart-outline"
+                title="No saved recipes yet"
+                subtitle="Tap the heart on any recipe to save it here."
+                action="Browse Recipes"
+                onAction={() => navigation.navigate('ScanTab')}
+              />
             ) : (
               <View style={sv.favGrid}>
                 {favorites.map((rec, i) => (
@@ -1144,14 +1230,20 @@ function SavedScreen({ navigation }) {
             {loading ? (
               <Text style={sv.loadingText}>Loading…</Text>
             ) : history.length === 0 ? (
-              <Text style={sv.emptyNote}>No scans yet.</Text>
+              <EmptyState
+                icon="time-outline"
+                title="No scans yet"
+                subtitle="Start by scanning your fridge or pantry to build your history."
+                action="Scan Now"
+                onAction={() => navigation.navigate('ScanTab')}
+              />
             ) : (
               history.map(entry => (
                 <View key={entry.id} style={sv.historyRow}>
                   {entry.uri ? (
                     <Image source={{ uri: entry.uri }} style={sv.historyThumb} />
                   ) : (
-                    <View style={[sv.historyThumb, { backgroundColor: C.surface, justifyContent: 'center', alignItems: 'center' }]}>
+                    <View style={[sv.historyThumb, sv.historyThumbEmpty]}>
                       <Ionicons name="camera-outline" size={18} color={C.inkTer} />
                     </View>
                   )}
@@ -1217,21 +1309,23 @@ function RecipeDetailScreen({ route, navigation }) {
 
   return (
     <View style={{ flex: 1, backgroundColor: C.white }}>
-      <StatusBar style="dark" />
+      <StatusBar style="light" />
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: 48 + (insets.bottom || 0) }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Hero image — edge to edge, no radius */}
-        <View style={{ height: 240, backgroundColor: C.surface }}>
+        {/* Hero image */}
+        <View style={{ height: 280, backgroundColor: C.surface }}>
           {recipe.image ? (
             <Image source={{ uri: recipe.image }} style={{ width: '100%', height: '100%', resizeMode: 'cover' }} />
           ) : (
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-              <Text style={{ fontSize: 80 }}>{recipe.emoji || '🍽️'}</Text>
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: C.accentTint }}>
+              <Text style={{ fontSize: 88 }}>{recipe.emoji || '🍽️'}</Text>
             </View>
           )}
+          {/* Bottom fade overlay */}
+          <View style={de.heroFade} />
           {/* Nav bar overlay */}
           <View style={[de.nav, { paddingTop: insets.top + S[2] }]}>
             <Press onPress={() => navigation.goBack()} scale={0.9}>
@@ -1249,7 +1343,11 @@ function RecipeDetailScreen({ route, navigation }) {
               )}
               <Press onPress={toggleFav} scale={0.9}>
                 <View style={de.navBtn}>
-                  <Ionicons name={isFaved ? 'heart' : 'heart-outline'} size={20} color={isFaved ? C.danger : '#fff'} />
+                  <Ionicons
+                    name={isFaved ? 'heart' : 'heart-outline'}
+                    size={20}
+                    color={isFaved ? '#ff4d6d' : '#fff'}
+                  />
                 </View>
               </Press>
             </View>
@@ -1258,16 +1356,15 @@ function RecipeDetailScreen({ route, navigation }) {
 
         {/* Content */}
         <View style={de.content}>
-          {/* Title */}
           <Text style={de.title}>{recipe.name}</Text>
 
-          {/* Meta chips row */}
+          {/* Meta chips */}
           <View style={de.chipRow}>
             {recipe.area && <View style={de.chip}><Text style={de.chipText}>{recipe.area}</Text></View>}
             {recipe.category && <View style={de.chip}><Text style={de.chipText}>{recipe.category}</Text></View>}
             {isReady ? (
               <View style={[de.chip, de.chipReady]}>
-                <Text style={[de.chipText, { color: C.successText }]}>Ready to cook</Text>
+                <Text style={[de.chipText, { color: C.successText }]}>✓ Ready to cook</Text>
               </View>
             ) : recipe.missing_count > 0 && (
               <View style={[de.chip, de.chipMissing]}>
@@ -1293,10 +1390,10 @@ function RecipeDetailScreen({ route, navigation }) {
           {/* Missing ingredients */}
           {recipe.missing_ingredients?.length > 0 && (
             <View style={de.missingCard}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: S[3] }}>
+              <View style={de.missingSectionRow}>
                 <Text style={de.missingSectionTitle}>MISSING</Text>
                 <TouchableOpacity onPress={addMissing}>
-                  <Text style={de.addToListText}>Add to list</Text>
+                  <Text style={de.addToListText}>+ Add to list</Text>
                 </TouchableOpacity>
               </View>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: S[2] }}>
@@ -1323,7 +1420,7 @@ function RecipeDetailScreen({ route, navigation }) {
                     <View style={[de.ingDot, { backgroundColor: have ? C.successBg : C.surface }]}>
                       <Ionicons name={have ? 'checkmark' : 'remove'} size={11} color={have ? C.success : C.inkTer} />
                     </View>
-                    <Text style={de.ingMeasure}>{ing.measure}</Text>
+                    <Text style={de.ingMeasure} numberOfLines={1}>{ing.measure}</Text>
                     <Text style={[de.ingName, !have && { color: C.inkTer }]}>{ing.name}</Text>
                   </View>
                 );
@@ -1378,14 +1475,13 @@ function CookModeScreen({ route, navigation }) {
   const [done, setDone] = useState(false);
   const insets = useSafeAreaInsets();
 
-  const progress  = useRef(new Animated.Value(0)).current;
-  const textOp    = useRef(new Animated.Value(1)).current;
-  const textTy    = useRef(new Animated.Value(0)).current;
+  const progress = useRef(new Animated.Value(0)).current;
+  const textOp   = useRef(new Animated.Value(1)).current;
+  const textTy   = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     const pct = steps.length > 1 ? step / (steps.length - 1) : 1;
-    Animated.timing(progress, { toValue: pct, duration: 250, useNativeDriver: false }).start();
-    if (step === steps.length - 1 && steps.length > 1) setDone(false);
+    Animated.timing(progress, { toValue: pct, duration: 280, useNativeDriver: false }).start();
   }, [step]);
 
   const progressWidth = progress.interpolate({
@@ -1456,7 +1552,8 @@ function CookModeScreen({ route, navigation }) {
           <Ionicons name="checkmark" size={36} color={C.success} />
         </View>
         <Text style={cm.doneTitle}>Recipe complete!</Text>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
+        <Text style={cm.doneSub}>Enjoy your meal.</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: S[5] }}>
           <Text style={cm.doneLink}>Back to recipes</Text>
         </TouchableOpacity>
       </View>
@@ -1467,14 +1564,17 @@ function CookModeScreen({ route, navigation }) {
     <View style={[cm.root, { paddingTop: insets.top }]} {...panResponder.panHandlers}>
       <StatusBar style="dark" />
 
-      {/* Progress bar — very top */}
+      {/* Progress bar */}
       <View style={cm.progressTrack}>
         <Animated.View style={[cm.progressFill, { width: progressWidth }]} />
       </View>
 
       {/* Top bar */}
       <View style={cm.topBar}>
-        <Text style={cm.stepLabel}>STEP {step + 1} OF {steps.length}</Text>
+        <View>
+          <Text style={cm.stepLabel}>STEP {step + 1} OF {steps.length}</Text>
+          <Text style={cm.recipeName} numberOfLines={1}>{recipe.name}</Text>
+        </View>
         <TouchableOpacity
           style={cm.closeBtn}
           onPress={() => { haptic.light(); navigation.goBack(); }}
@@ -1484,12 +1584,13 @@ function CookModeScreen({ route, navigation }) {
         </TouchableOpacity>
       </View>
 
-      <Text style={cm.recipeName} numberOfLines={1}>{recipe.name}</Text>
-
       {/* Step text */}
       <Animated.View style={[cm.stepContent, { opacity: textOp, transform: [{ translateY: textTy }] }]}>
         <Text style={cm.stepText}>{steps[step]}</Text>
       </Animated.View>
+
+      {/* Swipe hint */}
+      <Text style={cm.swipeHint}>Swipe left/right to navigate</Text>
 
       {/* Navigation */}
       <View style={[cm.navRow, { paddingBottom: Math.max(insets.bottom, S[4]) + S[4] }]}>
@@ -1524,7 +1625,7 @@ function TabNavigator() {
         headerShown: false,
         tabBarStyle: [
           tb.bar,
-          { paddingBottom: insets.bottom > 0 ? insets.bottom : 16 },
+          { paddingBottom: insets.bottom > 0 ? insets.bottom : 12 },
         ],
         tabBarActiveTintColor:   C.accent,
         tabBarInactiveTintColor: C.inkTer,
@@ -1566,7 +1667,7 @@ function TabNavigator() {
   );
 }
 
-// ─── Root App — no font loading gate ─────────────────────────────────────────
+// ─── Root App ─────────────────────────────────────────────────────────────────
 
 export default function App() {
   return (
@@ -1585,7 +1686,7 @@ export default function App() {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
-// ── Global UI ────────────────────────────────────────────────────────────────
+// ── Global UI ─────────────────────────────────────────────────────────────────
 const ui = StyleSheet.create({
   // Empty state
   emptyWrap: {
@@ -1622,7 +1723,7 @@ const ui = StyleSheet.create({
     color: '#fff',
   },
 
-  // Section header (13px UPPERCASE tracking)
+  // Section header
   sectionHeaderRow: {
     flexDirection: 'row', alignItems: 'center',
     justifyContent: 'space-between',
@@ -1635,7 +1736,7 @@ const ui = StyleSheet.create({
     letterSpacing: FONT.cap,
   },
 
-  // Recipe card (full-width)
+  // Recipe card
   card: {
     backgroundColor: C.white,
     borderRadius: R.card,
@@ -1643,7 +1744,7 @@ const ui = StyleSheet.create({
     overflow: 'hidden',
   },
   cardImgWrap: {
-    height: 180,
+    height: 188,
     backgroundColor: C.surface,
   },
   cardImg: {
@@ -1652,28 +1753,46 @@ const ui = StyleSheet.create({
   cardImgPlaceholder: {
     flex: 1, justifyContent: 'center', alignItems: 'center',
   },
+  cardMatchBadge: {
+    position: 'absolute', top: 10, left: 10,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: R.chip,
+    paddingHorizontal: 8, paddingVertical: 3,
+  },
+  cardMatchBadgeReady: {
+    backgroundColor: C.success,
+  },
+  cardMatchBadgeText: {
+    fontSize: 11, fontWeight: '700',
+    color: '#fff',
+  },
   cardFavBtn: {
     position: 'absolute', top: 10, right: 10,
-    width: 32, height: 32, borderRadius: 16,
+    width: 34, height: 34, borderRadius: 17,
     backgroundColor: 'rgba(0,0,0,0.30)',
     justifyContent: 'center', alignItems: 'center',
   },
   cardContent: {
     padding: S[4],
+    gap: S[2],
   },
   cardTitle: {
     fontSize: FONT.md, fontWeight: '600',
     color: C.ink,
     letterSpacing: FONT.snug,
-    marginBottom: S[2],
     lineHeight: FONT.md * 1.35,
   },
   cardMetaRow: {
     flexDirection: 'row', alignItems: 'center',
-    gap: S[3], marginBottom: S[2],
+    gap: S[3],
   },
-  cardDots: {
-    fontSize: FONT.sm,
+  dotsRow: {
+    flexDirection: 'row',
+    gap: 4,
+    alignItems: 'center',
+  },
+  dot: {
+    width: 7, height: 7, borderRadius: 3.5,
   },
   cardMetaText: {
     fontSize: FONT.sm, fontWeight: '400',
@@ -1699,10 +1818,9 @@ const ui = StyleSheet.create({
   cardMissing: {
     fontSize: FONT.sm, fontWeight: '400',
     color: C.amber,
-    marginTop: S[2],
   },
 
-  // Grid card (2-col favorites)
+  // Grid card
   gridCard: {
     width: (W - S[5] * 2 - S[3]) / 2,
     aspectRatio: 1,
@@ -1722,21 +1840,18 @@ const ui = StyleSheet.create({
     bottom: 0, left: 0, right: 0,
     paddingHorizontal: S[3], paddingBottom: S[3],
     paddingTop: S[8],
-    backgroundColor: 'rgba(0,0,0,0.48)',
+    backgroundColor: 'rgba(0,0,0,0.52)',
   },
   gridCardTitle: {
     fontSize: FONT.sm, fontWeight: '600',
     color: '#fff',
     lineHeight: FONT.sm * 1.4,
-    textShadowColor: 'rgba(0,0,0,0.5)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
   },
 
   // Modal
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: 'rgba(0,0,0,0.48)',
     justifyContent: 'flex-end',
   },
   modalSheet: {
@@ -1756,10 +1871,10 @@ const ui = StyleSheet.create({
   },
   modalIconRow: { alignItems: 'center', marginBottom: S[4] },
   modalIconBg: {
-    width: 48, height: 48, borderRadius: R.btn,
+    width: 52, height: 52, borderRadius: R.btn,
     backgroundColor: C.accentTint,
     justifyContent: 'center', alignItems: 'center',
-    borderWidth: 1, borderColor: `${C.accent}20`,
+    borderWidth: 1, borderColor: `${C.accent}25`,
   },
   modalTitle: {
     fontSize: FONT.lg, fontWeight: '700',
@@ -1775,7 +1890,7 @@ const ui = StyleSheet.create({
     marginBottom: S[5],
   },
 
-  // Inputs
+  // Input
   input: {
     height: 52,
     backgroundColor: C.surface,
@@ -1836,7 +1951,7 @@ const ui = StyleSheet.create({
   },
 });
 
-// ── Scan Screen ───────────────────────────────────────────────────────────────
+// ── Scan Screen ────────────────────────────────────────────────────────────────
 const sc = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.white },
 
@@ -1845,7 +1960,16 @@ const sc = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: S[5],
-    paddingBottom: S[3],
+    paddingVertical: S[3],
+  },
+  logoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  logoDot: {
+    width: 9, height: 9, borderRadius: 4.5,
+    backgroundColor: C.accent,
   },
   headerTitle: {
     fontSize: FONT.md, fontWeight: '700',
@@ -1858,70 +1982,209 @@ const sc = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
     borderWidth: 1, borderColor: C.border,
   },
-
-  // Empty/loading
-  screenTitle: {
-    fontSize: FONT.xl, fontWeight: '700',
-    color: C.ink,
-    letterSpacing: FONT.tight,
-    marginBottom: S[2],
-    lineHeight: FONT.xl * 1.25,
+  settingsBtnAlert: {
+    backgroundColor: C.accentTint,
+    borderColor: `${C.accent}30`,
   },
-  screenSub: {
+
+  // Scroll content
+  scrollContent: {
+    paddingHorizontal: S[5],
+    paddingTop: S[2],
+    paddingBottom: 48,
+  },
+
+  // Hero
+  heroSection: {
+    marginBottom: S[6],
+    paddingTop: S[2],
+  },
+  heroBadge: {
+    flexDirection: 'row',
+    alignSelf: 'flex-start',
+    backgroundColor: C.accentTint,
+    borderRadius: R.chip,
+    paddingHorizontal: S[3],
+    paddingVertical: 5,
+    marginBottom: S[4],
+    borderWidth: 1, borderColor: `${C.accent}25`,
+  },
+  heroBadgeText: {
+    fontSize: 10, fontWeight: '700',
+    color: C.accent,
+    letterSpacing: 0.7,
+  },
+  heroTitle: {
+    fontSize: 34, fontWeight: '800',
+    color: C.ink,
+    letterSpacing: -1.2,
+    lineHeight: 34 * 1.15,
+    marginBottom: S[3],
+  },
+  heroSub: {
     fontSize: FONT.base, fontWeight: '400',
     color: C.inkSub,
-    lineHeight: FONT.base * 1.5,
-    marginBottom: S[5],
+    lineHeight: FONT.base * 1.6,
   },
-  cameraZone: {
-    flex: 1,
+
+  // Scan zone
+  scanZone: {
     borderRadius: R.xl,
     borderWidth: 1.5,
     borderColor: C.border,
     borderStyle: 'dashed',
-    justifyContent: 'center', alignItems: 'center',
+    backgroundColor: C.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
     marginBottom: S[4],
-    minHeight: 200,
-    maxHeight: H * 0.45,
+    paddingVertical: S[8],
+    minHeight: 160,
+    maxHeight: H * 0.30,
   },
-  cameraZoneInner: {
-    alignItems: 'center', gap: S[3],
+  scanZoneInner: {
+    alignItems: 'center',
+    gap: S[2],
   },
-  tapToScanLabel: {
-    fontSize: FONT.base, fontWeight: '600',
-    color: C.accent,
+  scanIconRing: {
+    width: 76, height: 76, borderRadius: 38,
+    backgroundColor: C.accentTint,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: `${C.accent}35`,
+    marginBottom: S[2],
   },
-  loadingText: {
-    fontSize: FONT.base, fontWeight: '400',
-    color: C.inkSub,
+  scanCardTitle: {
+    fontSize: FONT.md, fontWeight: '600',
+    color: C.ink,
+    letterSpacing: FONT.snug,
   },
-  btnRow: {
-    flexDirection: 'row', gap: S[3],
-    marginBottom: S[3],
-  },
-  manualLink: {
-    fontSize: FONT.sm, fontWeight: '500',
+  scanCardSub: {
+    fontSize: FONT.sm, fontWeight: '400',
     color: C.inkTer,
   },
-
-  // Has results
-  foundRow: {
-    paddingHorizontal: S[5],
-    marginBottom: S[4],
-    gap: 6,
-  },
-  foundCount: {
+  scanLoadingText: {
     fontSize: FONT.base, fontWeight: '400',
     color: C.inkSub,
+    marginTop: S[3],
   },
-  foundBold: {
-    fontWeight: '700',
-    color: C.ink,
+
+  // Feature chips
+  featureRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: S[2],
+    marginBottom: S[5],
   },
-  seeRecipesBtn: {
+  featureChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: C.surface,
+    borderRadius: R.chip,
+    paddingHorizontal: S[3],
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  featureChipText: {
+    fontSize: FONT.xs, fontWeight: '500',
+    color: C.inkSub,
+  },
+
+  // Buttons
+  btnStack: {
+    gap: S[3],
+  },
+  btnPrimary: {
+    height: 56, borderRadius: R.btn,
+    backgroundColor: C.accent,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: S[2],
+  },
+  btnPrimaryText: {
+    fontSize: FONT.md, fontWeight: '700',
+    color: '#fff',
+    letterSpacing: -0.2,
+  },
+  btnSmallRow: {
+    flexDirection: 'row',
+    gap: S[2],
+  },
+  btnSecSmall: {
+    height: 48, borderRadius: R.btn,
+    backgroundColor: C.surface,
+    borderWidth: 1, borderColor: C.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: S[4],
+  },
+  btnSecSmallText: {
     fontSize: FONT.sm, fontWeight: '600',
-    color: C.accent,
+    color: C.inkSub,
   },
+
+  // Results state
+  sectionLabel: {
+    fontSize: FONT.xs, fontWeight: '600',
+    color: C.inkTer,
+    letterSpacing: FONT.cap,
+    textTransform: 'uppercase',
+    marginBottom: S[3],
+  },
+  resultCard: {
+    marginHorizontal: S[5],
+    marginBottom: S[5],
+    backgroundColor: C.ink,
+    borderRadius: R.card,
+    padding: S[5],
+  },
+  resultCardTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: S[4],
+  },
+  resultCount: {
+    fontSize: FONT.hero, fontWeight: '800',
+    color: '#fff',
+    letterSpacing: -2,
+    lineHeight: FONT.hero,
+  },
+  resultLabel: {
+    fontSize: FONT.base, fontWeight: '400',
+    color: 'rgba(255,255,255,0.65)',
+  },
+  resultRight: {
+    alignItems: 'flex-end',
+    paddingTop: S[2],
+  },
+  resultIngCount: {
+    fontSize: FONT.sm, fontWeight: '600',
+    color: 'rgba(255,255,255,0.9)',
+  },
+  resultDate: {
+    fontSize: FONT.xs, fontWeight: '400',
+    color: 'rgba(255,255,255,0.45)',
+    marginTop: 3,
+  },
+  resultViewBtn: {
+    height: 46,
+    backgroundColor: C.accent,
+    borderRadius: R.btn,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: S[2],
+  },
+  resultViewBtnText: {
+    fontSize: FONT.base, fontWeight: '600',
+    color: '#fff',
+  },
+
+  // Ingredient chips (results state)
   chipsScroll: {
     paddingHorizontal: S[5], gap: S[2], flexDirection: 'row',
   },
@@ -1929,22 +2192,15 @@ const sc = StyleSheet.create({
     paddingHorizontal: S[3] + 2, paddingVertical: S[2],
     borderRadius: R.chip,
     backgroundColor: C.accentTint,
-    borderWidth: 1, borderColor: `${C.accent}20`,
+    borderWidth: 1, borderColor: `${C.accent}25`,
   },
   ingChipText: {
     fontSize: FONT.sm, fontWeight: '500',
     color: C.accent,
     letterSpacing: FONT.wide,
   },
-  clearBtn: {
-    alignItems: 'center', paddingVertical: S[3],
-  },
-  clearBtnText: {
-    fontSize: FONT.sm, fontWeight: '500',
-    color: C.inkTer,
-  },
 
-  // Shared button primitives used in this screen
+  // Shared button re-use in results state
   btnAccent: {
     height: 52, borderRadius: R.btn,
     backgroundColor: C.accent,
@@ -1956,19 +2212,9 @@ const sc = StyleSheet.create({
     fontSize: FONT.base, fontWeight: '600',
     color: '#fff',
   },
-  btnOutline: {
-    height: 52, borderRadius: R.btn,
-    backgroundColor: C.white,
-    borderWidth: 1.5, borderColor: C.accent,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  btnOutlineText: {
-    fontSize: FONT.base, fontWeight: '600',
-    color: C.accent,
-  },
 });
 
-// ── Results Screen ────────────────────────────────────────────────────────────
+// ── Results Screen ─────────────────────────────────────────────────────────────
 const re = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.white },
 
@@ -1987,10 +2233,14 @@ const re = StyleSheet.create({
     borderWidth: 1, borderColor: C.border,
   },
   headerTitle: {
-    flex: 1,
     fontSize: FONT['2xl'], fontWeight: '700',
     color: C.ink,
     letterSpacing: FONT.tight,
+  },
+  headerSub: {
+    fontSize: FONT.xs, fontWeight: '400',
+    color: C.inkTer,
+    marginTop: 1,
   },
   headerBadge: {
     backgroundColor: C.accent,
@@ -2004,6 +2254,10 @@ const re = StyleSheet.create({
     color: '#fff',
   },
 
+  filterBar: {
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
   filterRow: {
     flexDirection: 'row',
     paddingHorizontal: S[5],
@@ -2037,7 +2291,7 @@ const re = StyleSheet.create({
   },
 });
 
-// ── Kitchen Screen ────────────────────────────────────────────────────────────
+// ── Kitchen Screen ─────────────────────────────────────────────────────────────
 const ki = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.white },
 
@@ -2059,7 +2313,27 @@ const ki = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
   },
 
-  // Big stat
+  // Stat card
+  statCard: {
+    marginHorizontal: S[5],
+    marginBottom: S[6],
+    padding: S[5],
+    borderRadius: R.card,
+    borderWidth: 1, borderColor: C.border,
+    backgroundColor: C.white,
+  },
+  statCardInner: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: S[3],
+  },
+  statArrow: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: C.accentTint,
+    justifyContent: 'center', alignItems: 'center',
+    marginTop: S[2],
+  },
   statNumber: {
     fontSize: FONT.hero, fontWeight: '700',
     color: C.ink,
@@ -2079,16 +2353,11 @@ const ki = StyleSheet.create({
   statLoading: {
     fontSize: FONT.base, fontWeight: '400',
     color: C.inkSub,
-    marginTop: S[3],
   },
   updateLink: {
     fontSize: FONT.sm, fontWeight: '600',
     color: C.accent,
     marginTop: S[3],
-  },
-  loadingText: {
-    fontSize: FONT.base, fontWeight: '400',
-    color: C.inkSub,
   },
 
   // Ingredient categories
@@ -2166,20 +2435,26 @@ const sv = StyleSheet.create({
     backgroundColor: C.surface,
     borderRadius: R.btn,
     padding: 3,
+    borderWidth: 1, borderColor: C.border,
   },
   segment: {
     flex: 1,
-    paddingVertical: S[2],
+    paddingVertical: S[2] + 1,
     borderRadius: R.btn - 2,
     alignItems: 'center',
   },
   segmentActive: {
     backgroundColor: C.white,
     borderWidth: 1, borderColor: C.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 2,
   },
   segLabel: {
     fontSize: FONT.sm, fontWeight: '500',
-    color: C.inkSub,
+    color: C.inkTer,
   },
   segLabelActive: {
     color: C.ink,
@@ -2189,24 +2464,25 @@ const sv = StyleSheet.create({
   tabContent: {
     paddingHorizontal: S[5],
     paddingTop: S[2],
-    paddingBottom: 120,
   },
   loadingText: {
     fontSize: FONT.base, fontWeight: '400',
     color: C.inkSub,
     paddingVertical: S[4],
   },
-  emptyNote: {
-    fontSize: FONT.base, fontWeight: '400',
-    color: C.inkSub,
-    lineHeight: FONT.base * 1.5,
-    paddingVertical: S[4],
-  },
+
   sectionActions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    gap: S[4],
+    alignItems: 'center',
+    gap: S[3],
     marginBottom: S[3],
+  },
+  iconAction: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: C.surface,
+    justifyContent: 'center', alignItems: 'center',
+    borderWidth: 1, borderColor: C.border,
   },
 
   addRow: {
@@ -2295,12 +2571,18 @@ const sv = StyleSheet.create({
     gap: S[3],
   },
   historyThumb: {
-    width: 44, height: 44,
+    width: 48, height: 48,
     borderRadius: R.chip,
     resizeMode: 'cover',
   },
+  historyThumbEmpty: {
+    backgroundColor: C.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1, borderColor: C.border,
+  },
   historyIngredients: {
-    fontSize: FONT.sm, fontWeight: '500',
+    fontSize: FONT.sm, fontWeight: '600',
     color: C.ink,
   },
   historyDate: {
@@ -2312,6 +2594,12 @@ const sv = StyleSheet.create({
 
 // ── Recipe Detail ─────────────────────────────────────────────────────────────
 const de = StyleSheet.create({
+  heroFade: {
+    position: 'absolute',
+    bottom: 0, left: 0, right: 0,
+    height: 80,
+    backgroundColor: 'rgba(0,0,0,0.18)',
+  },
   nav: {
     position: 'absolute', top: 0, left: 0, right: 0,
     flexDirection: 'row',
@@ -2321,7 +2609,7 @@ const de = StyleSheet.create({
   },
   navBtn: {
     width: 40, height: 40, borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.32)',
+    backgroundColor: 'rgba(0,0,0,0.35)',
     justifyContent: 'center', alignItems: 'center',
   },
 
@@ -2330,10 +2618,10 @@ const de = StyleSheet.create({
     paddingTop: S[5],
   },
   title: {
-    fontSize: 24, fontWeight: '700',
+    fontSize: 26, fontWeight: '700',
     color: C.ink,
     letterSpacing: -0.5,
-    lineHeight: 24 * 1.25,
+    lineHeight: 26 * 1.25,
     marginBottom: S[3],
   },
   chipRow: {
@@ -2357,14 +2645,14 @@ const de = StyleSheet.create({
   },
 
   cookBtn: {
-    height: 52, borderRadius: R.btn,
+    height: 54, borderRadius: R.btn,
     backgroundColor: C.accent,
     flexDirection: 'row',
     alignItems: 'center', justifyContent: 'center',
     gap: S[2],
   },
   cookBtnText: {
-    fontSize: FONT.md, fontWeight: '600',
+    fontSize: FONT.md, fontWeight: '700',
     color: '#fff',
   },
 
@@ -2374,7 +2662,13 @@ const de = StyleSheet.create({
     borderRadius: R.card,
     padding: S[4],
     marginBottom: S[5],
-    borderWidth: 1, borderColor: `${C.amber}25`,
+    borderWidth: 1, borderColor: `${C.amber}20`,
+  },
+  missingSectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: S[3],
   },
   missingSectionTitle: {
     fontSize: FONT.sm, fontWeight: '600',
@@ -2389,7 +2683,7 @@ const de = StyleSheet.create({
     paddingHorizontal: S[3], paddingVertical: 5,
     borderRadius: R.chip,
     backgroundColor: C.white,
-    borderWidth: 1, borderColor: `${C.amber}30`,
+    borderWidth: 1, borderColor: `${C.amber}25`,
   },
   missingPillText: {
     fontSize: FONT.sm, fontWeight: '500',
@@ -2418,9 +2712,10 @@ const de = StyleSheet.create({
   ingDot: {
     width: 20, height: 20, borderRadius: 10,
     justifyContent: 'center', alignItems: 'center',
+    flexShrink: 0,
   },
   ingMeasure: {
-    width: 80,
+    minWidth: 70, maxWidth: 110,
     fontSize: FONT.sm, fontWeight: '600',
     color: C.inkSub,
   },
@@ -2437,10 +2732,10 @@ const de = StyleSheet.create({
     marginBottom: S[4],
   },
   stepNumBadge: {
-    width: 24, height: 24, borderRadius: 12,
+    width: 26, height: 26, borderRadius: 13,
     backgroundColor: C.accent,
     justifyContent: 'center', alignItems: 'center',
-    flexShrink: 0, marginTop: 2,
+    flexShrink: 0, marginTop: 1,
   },
   stepNumText: {
     fontSize: FONT.xs, fontWeight: '700',
@@ -2450,7 +2745,7 @@ const de = StyleSheet.create({
     flex: 1,
     fontSize: FONT.base, fontWeight: '400',
     color: C.ink,
-    lineHeight: FONT.base * 1.6,
+    lineHeight: FONT.base * 1.65,
   },
 
   // Secondary actions
@@ -2478,7 +2773,7 @@ const cm = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.white },
 
   progressTrack: {
-    height: 2,
+    height: 3,
     backgroundColor: C.border,
     overflow: 'hidden',
   },
@@ -2492,26 +2787,25 @@ const cm = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: S[5],
-    paddingVertical: S[4],
+    paddingTop: S[4],
+    paddingBottom: S[2],
   },
   stepLabel: {
-    fontSize: FONT.sm, fontWeight: '600',
-    color: C.inkTer,
+    fontSize: FONT.sm, fontWeight: '700',
+    color: C.accent,
     letterSpacing: FONT.cap,
+  },
+  recipeName: {
+    fontSize: FONT.xs, fontWeight: '500',
+    color: C.inkTer,
+    marginTop: 2,
+    letterSpacing: FONT.wide,
   },
   closeBtn: {
-    width: 32, height: 32, borderRadius: 16,
+    width: 36, height: 36, borderRadius: 18,
     backgroundColor: C.surface,
     justifyContent: 'center', alignItems: 'center',
-  },
-
-  recipeName: {
-    fontSize: FONT.sm, fontWeight: '500',
-    color: C.inkTer,
-    paddingHorizontal: S[5],
-    marginBottom: S[6],
-    textTransform: 'uppercase',
-    letterSpacing: FONT.cap,
+    borderWidth: 1, borderColor: C.border,
   },
 
   stepContent: {
@@ -2522,14 +2816,22 @@ const cm = StyleSheet.create({
   stepText: {
     fontSize: FONT.xl, fontWeight: '500',
     color: C.ink,
-    lineHeight: FONT.xl * 1.55,
+    lineHeight: FONT.xl * 1.6,
     textAlign: 'center',
+  },
+
+  swipeHint: {
+    textAlign: 'center',
+    fontSize: FONT.xs, fontWeight: '400',
+    color: C.inkTer,
+    marginBottom: S[3],
+    letterSpacing: FONT.wide,
   },
 
   navRow: {
     flexDirection: 'row',
     paddingHorizontal: S[5],
-    paddingTop: S[5],
+    paddingTop: S[4],
     gap: S[3],
     alignItems: 'center',
   },
@@ -2546,7 +2848,7 @@ const cm = StyleSheet.create({
   },
   navNextWrap: { flex: 1 },
   navNext: {
-    flex: 1, height: 52,
+    flex: 1, height: 54,
     backgroundColor: C.accent,
     borderRadius: R.btn,
     flexDirection: 'row',
@@ -2554,21 +2856,27 @@ const cm = StyleSheet.create({
     gap: S[2],
   },
   navNextText: {
-    fontSize: FONT.md, fontWeight: '600',
+    fontSize: FONT.md, fontWeight: '700',
     color: '#fff',
   },
 
   // Done state
   doneCheck: {
-    width: 80, height: 80, borderRadius: 40,
+    width: 84, height: 84, borderRadius: 42,
     backgroundColor: C.successBg,
     justifyContent: 'center', alignItems: 'center',
     marginBottom: S[5],
+    borderWidth: 1, borderColor: `${C.success}30`,
   },
   doneTitle: {
     fontSize: FONT.xl, fontWeight: '700',
     color: C.ink,
-    marginBottom: S[3],
+    marginBottom: S[2],
+    letterSpacing: FONT.tight,
+  },
+  doneSub: {
+    fontSize: FONT.base, fontWeight: '400',
+    color: C.inkSub,
   },
   doneLink: {
     fontSize: FONT.base, fontWeight: '600',
@@ -2596,12 +2904,12 @@ const tb = StyleSheet.create({
     backgroundColor: C.white,
     borderTopWidth: 1,
     borderTopColor: C.border,
-    height: 84,
+    height: Platform.OS === 'ios' ? 80 : 60,
     paddingTop: S[2],
   },
   label: {
     fontSize: 10,
-    fontWeight: '500',
+    fontWeight: '600',
     marginTop: 2,
   },
 });

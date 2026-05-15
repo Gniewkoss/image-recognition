@@ -1,8 +1,36 @@
 ---
 name: project-redesign
-description: FoodLens complete visual redesign — Everyday Kitchen direction, color palette, all design decisions
+description: FoodLens v2 — Everyday Kitchen design with premium landing ScanScreen, all bug fixes, full App.js rewrite May 2026
 metadata:
   type: project
+---
+
+## v2 Upgrade — May 2026 (latest)
+
+Complete App.js rewrite. design.js tokens unchanged. Key changes:
+
+**ScanScreen (Home/Landing — premium)**
+- Hero title: 34px weight 800, letterSpacing -1.2 (was 22px)
+- Badge pill: "✦ AI-POWERED KITCHEN ASSISTANT" in accentTint
+- Scan zone: 76px icon ring with pulse animation (1.07 scale loop), dashed container
+- Entrance: fade (400ms) + spring slideUp on hero
+- 3 feature chips: Instant scan / AI detection / Recipe match
+- CTA: 56px primary "Take Photo" + 2×48px secondary buttons
+- Results state: dark card (C.ink bg) with 48px recipe count + "View All Recipes"
+
+**Bugs fixed**
+- `foundRow` missing `flexDirection: 'row'` → replaced with dark result card
+- `ApiKeyModal`: `openKeyModal()` now pre-fills tempKey with existing apiKey
+- RecipeCard dots: replaced nested `<Text>` map with `<View>` dot rows
+- Match % badge added to card image (top-left)
+
+**Other screen improvements**
+- KitchenScreen: stat in bordered card, arrow badge affordance
+- SavedScreen: all 3 tabs use `<EmptyState>` consistently; icon action buttons in 36px circles
+- RecipeDetail: hero 280px, accentTint emoji bg, StatusBar light, `heroFade` overlay, `ingMeasure` flexible width
+- CookMode: 3px progress bar, swipe hint text, step label in accent color, recipe name inline in topBar
+- TabBar: `Platform.OS === 'ios' ? 80 : 60` height (was static 84px)
+
 ---
 
 ## Active Design Direction: "Everyday Kitchen"
